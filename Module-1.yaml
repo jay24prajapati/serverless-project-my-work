@@ -1,0 +1,1380 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DALScooter User Management, Authentication & Notification System with Email Verification'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'DALScooter'
+    Description: 'Project name for resource naming'
+  
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues: 
+      - dev
+      - prod
+    Description: 'Environment name'
+
+Resources:
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-Users-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: userType
+          AttributeType: S
+        - AttributeName: verificationStatus
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: UserTypeIndex
+          KeySchema:
+            - AttributeName: userType
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: VerificationStatusIndex
+          KeySchema:
+            - AttributeName: verificationStatus
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Module
+          Value: UserManagement
+
+  SecurityQuestionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-SecurityQuestions-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Module
+          Value: UserManagement
+
+  UserSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-UserSessions-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sessionId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sessionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  NotificationLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-NotificationLogs-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: notificationId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: notificationId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  RegistrationNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-Registration-Notifications-${Environment}'
+      DisplayName: 'DALScooter Registration Notifications'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  LoginNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-Login-Notifications-${Environment}'
+      DisplayName: 'DALScooter Login Notifications'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${ProjectName}-UserPool-${Environment}'
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AutoVerifiedAttributes:
+        - email
+      EmailVerificationMessage: |
+        Welcome to DALScooter! 
+        
+        Thank you for registering with DALScooter, your premium scooter rental service.
+        
+        Please verify your email address by entering this verification code in the application:
+        
+        Verification Code: {####}
+        
+        This code will expire in 24 hours.
+        
+        If you didn't create this account, please ignore this email.
+        
+        Best regards,
+        DALScooter Team
+      EmailVerificationSubject: 'Verify your DALScooter account'
+      VerificationMessageTemplate:
+        EmailMessage: |
+          Welcome to DALScooter! 
+          
+          Thank you for registering with DALScooter, your premium scooter rental service.
+          
+          Please verify your email address by entering this verification code in the application:
+          
+          Verification Code: {####}
+          
+          This code will expire in 24 hours.
+          
+          If you didn't create this account, please ignore this email.
+          
+          Best regards,
+          DALScooter Team
+        EmailSubject: 'Verify your DALScooter account'
+        DefaultEmailOption: CONFIRM_WITH_CODE
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: user_type
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      UserPoolTags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Module: Authentication
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${ProjectName}-UserPoolClient-${Environment}'
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      ReadAttributes:
+        - email
+      PreventUserExistenceErrors: ENABLED
+
+  UserRegistrationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-UserRegistration-${Environment}'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          USERS_TABLE: !Ref UsersTable
+          SECURITY_QUESTIONS_TABLE: !Ref SecurityQuestionsTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+          COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
+          REGISTRATION_TOPIC_ARN: !Ref RegistrationNotificationTopic
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import hashlib
+          import random
+          import uuid
+          import os
+          from datetime import datetime
+          
+          dynamodb = boto3.resource('dynamodb')
+          cognito = boto3.client('cognito-idp')
+          sns = boto3.client('sns')
+          
+          def lambda_handler(event, context):
+              print(f"Registration event: {json.dumps(event)}")
+              
+              try:
+                  if 'body' in event:
+                      body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+                  else:
+                      body = event
+                  
+                  email = body.get('email', '').strip().lower()
+                  password = body.get('password', '')
+                  user_type = body.get('userType', 'customer').lower()
+                  security_question = body.get('securityQuestion', '').strip()
+                  security_answer = body.get('securityAnswer', '').strip()
+                  
+                  if not all([email, password, security_question, security_answer]):
+                      return response_with_cors(400, {'error': 'Missing required fields: email, password, securityQuestion, securityAnswer'})
+                  
+                  if user_type not in ['customer', 'franchise']:
+                      return response_with_cors(400, {'error': 'userType must be either "customer" or "franchise"'})
+                  
+                  if len(password) < 8:
+                      return response_with_cors(400, {'error': 'Password must be at least 8 characters long'})
+                  
+                  users_table = dynamodb.Table(os.environ['USERS_TABLE'])
+                  existing_user = users_table.scan(
+                      FilterExpression='email = :email',
+                      ExpressionAttributeValues={':email': email}
+                  )
+                  
+                  if existing_user['Items']:
+                      return response_with_cors(400, {'error': 'User with this email already exists'})
+                  
+                  user_id = str(uuid.uuid4())
+                  
+                  try:
+                      cognito_response = cognito.sign_up(
+                          ClientId=os.environ['COGNITO_CLIENT_ID'],
+                          Username=email,
+                          Password=password,
+                          UserAttributes=[
+                              {'Name': 'email', 'Value': email},
+                              {'Name': 'custom:user_type', 'Value': user_type}
+                          ]
+                      )
+                      
+                      print(f"Cognito user created: {email}")
+                      
+                  except cognito.exceptions.UsernameExistsException:
+                      return response_with_cors(400, {'error': 'User already exists in the system'})
+                  except Exception as e:
+                      print(f"Cognito error: {str(e)}")
+                      return response_with_cors(400, {'error': f'User creation failed: {str(e)}'})
+                  
+                  users_table.put_item(
+                      Item={
+                          'userId': user_id,
+                          'email': email,
+                          'userType': user_type,
+                          'registrationDate': datetime.now().isoformat(),
+                          'isActive': True,
+                          'verificationStatus': 'pending',
+                          'cognitoUsername': email
+                      }
+                  )
+                  
+                  security_table = dynamodb.Table(os.environ['SECURITY_QUESTIONS_TABLE'])
+                  caesar_challenge = generate_caesar_challenge()
+                  
+                  security_table.put_item(
+                      Item={
+                          'userId': user_id,
+                          'securityQuestion': security_question,
+                          'securityAnswer': hashlib.sha256(security_answer.lower().strip().encode()).hexdigest(),
+                          'caesarChallenge': caesar_challenge,
+                          'createdAt': datetime.now().isoformat()
+                      }
+                  )
+                  
+                  send_registration_notification(email, user_id, user_type)
+                  
+                  print(f"User registered successfully: {user_id}")
+                  
+                  return response_with_cors(200, {
+                      'message': 'User registered successfully! Please check your email for verification code.',
+                      'userId': user_id,
+                      'email': email,
+                      'userType': user_type,
+                      'verificationRequired': True,
+                      'nextStep': 'Please verify your email address using the code sent to your email.'
+                  })
+                  
+              except Exception as e:
+                  print(f"Registration error: {str(e)}")
+                  return response_with_cors(500, {'error': 'Internal server error'})
+          
+          def send_registration_notification(email, user_id, user_type):
+              try:
+                  topic_arn = os.environ.get('REGISTRATION_TOPIC_ARN', '')
+                  if not topic_arn:
+                      print("No registration topic ARN configured, skipping notification")
+                      return
+                  
+                  message = {
+                      'email': email,
+                      'userId': user_id,
+                      'userType': user_type,
+                      'timestamp': datetime.now().isoformat(),
+                      'event': 'user_registered'
+                  }
+                  
+                  sns.publish(
+                      TopicArn=topic_arn,
+                      Message=json.dumps(message),
+                      Subject=f'DALScooter Registration - {email}'
+                  )
+                  
+                  print(f"Registration notification sent for user: {user_id}")
+                  
+              except Exception as e:
+                  print(f"Error sending registration notification: {str(e)}")
+          
+          def generate_caesar_challenge():
+              words = ['CLOUD', 'SERVERLESS', 'LAMBDA', 'DYNAMO', 'COGNITO', 'GATEWAY', 'SECURE', 'CRYPTO']
+              word = random.choice(words)
+              shift = random.randint(1, 25)
+              
+              encoded = ""
+              for char in word:
+                  if char.isalpha():
+                      encoded += chr((ord(char) - ord('A') + shift) % 26 + ord('A'))
+                  else:
+                      encoded += char
+              
+              return {
+                  'originalWord': word,
+                  'encodedWord': encoded,
+                  'shift': shift,
+                  'hint': f"Decode this word using Caesar cipher (shift by {shift}): {encoded}",
+                  'instructions': f"Each letter is shifted {shift} positions forward in the alphabet"
+              }
+          
+          def response_with_cors(status_code, body):
+              return {
+                  'statusCode': status_code,
+                  'headers': {
+                      'Access-Control-Allow-Origin': '*',
+                      'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                      'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                      'Content-Type': 'application/json'
+                  },
+                  'body': json.dumps(body)
+              }
+
+  EmailVerificationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-EmailVerification-${Environment}'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          USERS_TABLE: !Ref UsersTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+          COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          from datetime import datetime
+          
+          dynamodb = boto3.resource('dynamodb')
+          cognito = boto3.client('cognito-idp')
+          
+          def lambda_handler(event, context):
+              print(f"Email verification event: {json.dumps(event)}")
+              
+              try:
+                  if 'body' in event:
+                      body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+                  else:
+                      body = event
+                  
+                  email = body.get('email', '').strip().lower()
+                  verification_code = body.get('verificationCode', '').strip()
+                  
+                  if not email or not verification_code:
+                      return response_with_cors(400, {'error': 'Email and verification code are required'})
+                  
+                  try:
+                      cognito.confirm_sign_up(
+                          ClientId=os.environ['COGNITO_CLIENT_ID'],
+                          Username=email,
+                          ConfirmationCode=verification_code
+                      )
+                      
+                      user_id = get_user_id_by_email(email)
+                      if user_id:
+                          users_table = dynamodb.Table(os.environ['USERS_TABLE'])
+                          users_table.update_item(
+                              Key={'userId': user_id},
+                              UpdateExpression='SET verificationStatus = :status, verifiedAt = :verified_at',
+                              ExpressionAttributeValues={
+                                  ':status': 'verified',
+                                  ':verified_at': datetime.now().isoformat()
+                              }
+                          )
+                      
+                      print(f"Email verified successfully for: {email}")
+                      
+                      return response_with_cors(200, {
+                          'message': 'Email verified successfully! You can now login.',
+                          'verified': True
+                      })
+                      
+                  except cognito.exceptions.CodeMismatchException:
+                      return response_with_cors(400, {'error': 'Invalid verification code'})
+                  except cognito.exceptions.ExpiredCodeException:
+                      return response_with_cors(400, {'error': 'Verification code has expired'})
+                  except cognito.exceptions.NotAuthorizedException:
+                      return response_with_cors(400, {'error': 'User is already verified'})
+                  except Exception as e:
+                      print(f"Verification error: {str(e)}")
+                      return response_with_cors(400, {'error': 'Verification failed'})
+                      
+              except Exception as e:
+                  print(f"Email verification error: {str(e)}")
+                  return response_with_cors(500, {'error': 'Internal server error'})
+          
+          def get_user_id_by_email(email):
+              try:
+                  users_table = dynamodb.Table(os.environ['USERS_TABLE'])
+                  response = users_table.scan(
+                      FilterExpression='email = :email',
+                      ExpressionAttributeValues={':email': email}
+                  )
+                  
+                  if response['Items']:
+                      return response['Items'][0]['userId']
+                  return None
+              except Exception as e:
+                  print(f"Error getting user ID: {str(e)}")
+                  return None
+          
+          def response_with_cors(status_code, body):
+              return {
+                  'statusCode': status_code,
+                  'headers': {
+                      'Access-Control-Allow-Origin': '*',
+                      'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                      'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                      'Content-Type': 'application/json'
+                  },
+                  'body': json.dumps(body)
+              }
+
+  ResendVerificationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-ResendVerification-${Environment}'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          
+          cognito = boto3.client('cognito-idp')
+          
+          def lambda_handler(event, context):
+              print(f"Resend verification event: {json.dumps(event)}")
+              
+              try:
+                  if 'body' in event:
+                      body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+                  else:
+                      body = event
+                  
+                  email = body.get('email', '').strip().lower()
+                  
+                  if not email:
+                      return response_with_cors(400, {'error': 'Email is required'})
+                  
+                  try:
+                      cognito.resend_confirmation_code(
+                          ClientId=os.environ['COGNITO_CLIENT_ID'],
+                          Username=email
+                      )
+                      
+                      print(f"Verification code resent for: {email}")
+                      
+                      return response_with_cors(200, {
+                          'message': 'Verification code sent to your email address.'
+                      })
+                      
+                  except cognito.exceptions.InvalidParameterException:
+                      return response_with_cors(400, {'error': 'User not found or already verified'})
+                  except Exception as e:
+                      print(f"Resend error: {str(e)}")
+                      return response_with_cors(400, {'error': 'Failed to resend verification code'})
+                      
+              except Exception as e:
+                  print(f"Resend verification error: {str(e)}")
+                  return response_with_cors(500, {'error': 'Internal server error'})
+          
+          def response_with_cors(status_code, body):
+              return {
+                  'statusCode': status_code,
+                  'headers': {
+                      'Access-Control-Allow-Origin': '*',
+                      'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                      'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                      'Content-Type': 'application/json'
+                  },
+                  'body': json.dumps(body)
+              }
+
+  AuthenticationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-Authentication-${Environment}'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          USERS_TABLE: !Ref UsersTable
+          SECURITY_QUESTIONS_TABLE: !Ref SecurityQuestionsTable
+          USER_SESSIONS_TABLE: !Ref UserSessionsTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+          COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
+          LOGIN_TOPIC_ARN: !Ref LoginNotificationTopic
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import hashlib
+          import os
+          import uuid
+          from datetime import datetime, timedelta
+          
+          dynamodb = boto3.resource('dynamodb')
+          cognito = boto3.client('cognito-idp')
+          sns = boto3.client('sns')
+          
+          def lambda_handler(event, context):
+              print(f"Auth event: {json.dumps(event)}")
+              
+              try:
+                  if 'body' in event:
+                      body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+                  else:
+                      body = event
+                  
+                  auth_step = body.get('step', 1)
+                  
+                  if auth_step == 1:
+                      return handle_cognito_auth(body)
+                  elif auth_step == 2:
+                      return handle_security_question(body)
+                  elif auth_step == 3:
+                      return handle_caesar_cipher(body)
+                  else:
+                      return response_with_cors(400, {'error': 'Invalid authentication step. Must be 1, 2, or 3'})
+                      
+              except Exception as e:
+                  print(f"Auth error: {str(e)}")
+                  return response_with_cors(500, {'error': 'Internal server error'})
+          
+          def handle_cognito_auth(body):
+              username = body.get('username', '').strip().lower()
+              password = body.get('password', '')
+              
+              if not username or not password:
+                  return response_with_cors(400, {'error': 'Username and password are required'})
+              
+              try:
+                  users_table = dynamodb.Table(os.environ['USERS_TABLE'])
+                  user_response = users_table.scan(
+                      FilterExpression='email = :email',
+                      ExpressionAttributeValues={':email': username}
+                  )
+                  
+                  if not user_response['Items']:
+                      return response_with_cors(404, {'error': 'User not found in database'})
+                  
+                  user_data = user_response['Items'][0]
+                  user_id = user_data['userId']
+                  
+                  if not user_data.get('isActive', False):
+                      return response_with_cors(401, {'error': 'User account is inactive'})
+                  
+                  if user_data.get('verificationStatus') != 'verified':
+                      return response_with_cors(401, {'error': 'Email not verified. Please verify your email first.'})
+                  
+                  response = cognito.initiate_auth(
+                      ClientId=os.environ['COGNITO_CLIENT_ID'],
+                      AuthFlow='USER_PASSWORD_AUTH',
+                      AuthParameters={
+                          'USERNAME': username,
+                          'PASSWORD': password
+                      }
+                  )
+                  
+                  security_table = dynamodb.Table(os.environ['SECURITY_QUESTIONS_TABLE'])
+                  security_response = security_table.get_item(Key={'userId': user_id})
+                  
+                  if 'Item' not in security_response:
+                      return response_with_cors(404, {'error': 'Security question not found'})
+                  
+                  session_id = str(uuid.uuid4())
+                  sessions_table = dynamodb.Table(os.environ['USER_SESSIONS_TABLE'])
+                  sessions_table.put_item(
+                      Item={
+                          'sessionId': session_id,
+                          'userId': user_id,
+                          'authStep': 1,
+                          'createdAt': datetime.now().isoformat(),
+                          'expiresAt': int((datetime.now() + timedelta(minutes=10)).timestamp()),
+                          'cognitoTokens': {
+                              'accessToken': response['AuthenticationResult']['AccessToken'],
+                              'idToken': response['AuthenticationResult']['IdToken'],
+                              'refreshToken': response['AuthenticationResult']['RefreshToken']
+                          }
+                      }
+                  )
+                  
+                  print(f"Step 1 authentication successful for user: {user_id}")
+                  
+                  return response_with_cors(200, {
+                      'message': 'First factor authentication successful',
+                      'nextStep': 2,
+                      'sessionId': session_id,
+                      'userId': user_id,
+                      'securityQuestion': security_response['Item']['securityQuestion']
+                  })
+                  
+              except cognito.exceptions.NotAuthorizedException:
+                  return response_with_cors(401, {'error': 'Invalid username or password'})
+              except cognito.exceptions.UserNotConfirmedException:
+                  return response_with_cors(401, {'error': 'User account not confirmed. Please verify your email first.'})
+              except Exception as e:
+                  print(f"Cognito auth error: {str(e)}")
+                  return response_with_cors(401, {'error': 'Authentication failed'})
+          
+          def handle_security_question(body):
+              session_id = body.get('sessionId', '')
+              user_id = body.get('userId', '')
+              provided_answer = body.get('securityAnswer', '').strip()
+              
+              if not all([session_id, user_id, provided_answer]):
+                  return response_with_cors(400, {'error': 'Session ID, User ID, and security answer are required'})
+              
+              sessions_table = dynamodb.Table(os.environ['USER_SESSIONS_TABLE'])
+              session_response = sessions_table.get_item(Key={'sessionId': session_id})
+              
+              if 'Item' not in session_response:
+                  return response_with_cors(401, {'error': 'Invalid or expired session'})
+              
+              session_data = session_response['Item']
+              if session_data['userId'] != user_id or session_data['authStep'] != 1:
+                  return response_with_cors(401, {'error': 'Invalid session state'})
+              
+              security_table = dynamodb.Table(os.environ['SECURITY_QUESTIONS_TABLE'])
+              security_response = security_table.get_item(Key={'userId': user_id})
+              
+              if 'Item' not in security_response:
+                  return response_with_cors(404, {'error': 'User security data not found'})
+              
+              stored_answer = security_response['Item']['securityAnswer']
+              hashed_answer = hashlib.sha256(provided_answer.lower().strip().encode()).hexdigest()
+              
+              if hashed_answer == stored_answer:
+                  sessions_table.update_item(
+                      Key={'sessionId': session_id},
+                      UpdateExpression='SET authStep = :step',
+                      ExpressionAttributeValues={':step': 2}
+                  )
+                  
+                  caesar_challenge = security_response['Item']['caesarChallenge']
+                  
+                  print(f"Step 2 authentication successful for user: {user_id}")
+                  
+                  return response_with_cors(200, {
+                      'message': 'Second factor authentication successful',
+                      'nextStep': 3,
+                      'sessionId': session_id,
+                      'userId': user_id,
+                      'caesarChallenge': caesar_challenge['hint'],
+                      'caesarInstructions': caesar_challenge['instructions']
+                  })
+              else:
+                  return response_with_cors(401, {'error': 'Incorrect security answer'})
+          
+          def handle_caesar_cipher(body):
+              session_id = body.get('sessionId', '')
+              user_id = body.get('userId', '')
+              provided_answer = body.get('caesarAnswer', '').upper().strip()
+              
+              if not all([session_id, user_id, provided_answer]):
+                  return response_with_cors(400, {'error': 'Session ID, User ID, and Caesar answer are required'})
+              
+              sessions_table = dynamodb.Table(os.environ['USER_SESSIONS_TABLE'])
+              session_response = sessions_table.get_item(Key={'sessionId': session_id})
+              
+              if 'Item' not in session_response:
+                  return response_with_cors(401, {'error': 'Invalid or expired session'})
+              
+              session_data = session_response['Item']
+              if session_data['userId'] != user_id or session_data['authStep'] != 2:
+                  return response_with_cors(401, {'error': 'Invalid session state'})
+              
+              security_table = dynamodb.Table(os.environ['SECURITY_QUESTIONS_TABLE'])
+              security_response = security_table.get_item(Key={'userId': user_id})
+              
+              if 'Item' not in security_response:
+                  return response_with_cors(404, {'error': 'User security data not found'})
+              
+              correct_answer = security_response['Item']['caesarChallenge']['originalWord']
+              
+              if provided_answer == correct_answer:
+                  sessions_table.update_item(
+                      Key={'sessionId': session_id},
+                      UpdateExpression='SET authStep = :step, completedAt = :completed',
+                      ExpressionAttributeValues={
+                          ':step': 3,
+                          ':completed': datetime.now().isoformat()
+                      }
+                  )
+                  
+                  users_table = dynamodb.Table(os.environ['USERS_TABLE'])
+                  user_response = users_table.get_item(Key={'userId': user_id})
+                  user_data = user_response['Item']
+                  
+                  send_login_notification(user_data)
+                  
+                  print(f"Step 3 authentication successful for user: {user_id}")
+                  
+                  return response_with_cors(200, {
+                      'message': 'Authentication successful - All factors verified',
+                      'authComplete': True,
+                      'sessionId': session_id,
+                      'userId': user_id,
+                      'userType': user_data['userType'],
+                      'email': user_data['email'],
+                      'accessToken': session_data['cognitoTokens']['accessToken']
+                  })
+              else:
+                  return response_with_cors(401, {'error': f'Incorrect Caesar cipher answer. Expected: {correct_answer}'})
+          
+          def send_login_notification(user_data):
+              try:
+                  topic_arn = os.environ.get('LOGIN_TOPIC_ARN', '')
+                  if not topic_arn:
+                      print("No login topic ARN configured, skipping notification")
+                      return
+                  
+                  message = {
+                      'email': user_data['email'],
+                      'userId': user_data['userId'],
+                      'userType': user_data['userType'],
+                      'loginTime': datetime.now().isoformat(),
+                      'event': 'user_login'
+                  }
+                  
+                  sns.publish(
+                      TopicArn=topic_arn,
+                      Message=json.dumps(message),
+                      Subject=f'DALScooter Login - {user_data["email"]}'
+                  )
+                  
+                  print(f"Login notification sent for user: {user_data['userId']}")
+                  
+              except Exception as e:
+                  print(f"Error sending login notification: {str(e)}")
+          
+          def response_with_cors(status_code, body):
+              return {
+                  'statusCode': status_code,
+                  'headers': {
+                      'Access-Control-Allow-Origin': '*',
+                      'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                      'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                      'Content-Type': 'application/json'
+                  },
+                  'body': json.dumps(body)
+              }
+
+  SecurityQuestionFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-SecurityQuestion-${Environment}'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          SECURITY_QUESTIONS_TABLE: !Ref SecurityQuestionsTable
+          USERS_TABLE: !Ref UsersTable
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          
+          dynamodb = boto3.resource('dynamodb')
+          
+          def lambda_handler(event, context):
+              print(f"Security question event: {json.dumps(event)}")
+              
+              try:
+                  user_id = event.get('pathParameters', {}).get('userId')
+                  
+                  if not user_id:
+                      return response_with_cors(400, {'error': 'User ID is required in the URL path'})
+                  
+                  users_table = dynamodb.Table(os.environ['USERS_TABLE'])
+                  user_response = users_table.get_item(Key={'userId': user_id})
+                  
+                  if 'Item' not in user_response:
+                      return response_with_cors(404, {'error': 'User not found'})
+                  
+                  security_table = dynamodb.Table(os.environ['SECURITY_QUESTIONS_TABLE'])
+                  security_response = security_table.get_item(Key={'userId': user_id})
+                  
+                  if 'Item' not in security_response:
+                      return response_with_cors(404, {'error': 'Security question not found for this user'})
+                  
+                  user_data = user_response['Item']
+                  security_data = security_response['Item']
+                  
+                  return response_with_cors(200, {
+                      'userId': user_id,
+                      'securityQuestion': security_data['securityQuestion'],
+                      'email': user_data['email'],
+                      'userType': user_data['userType']
+                  })
+                  
+              except Exception as e:
+                  print(f"Security question error: {str(e)}")
+                  return response_with_cors(500, {'error': 'Internal server error'})
+          
+          def response_with_cors(status_code, body):
+              return {
+                  'statusCode': status_code,
+                  'headers': {
+                      'Access-Control-Allow-Origin': '*',
+                      'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                      'Access-Control-Allow-Methods': 'GET,OPTIONS',
+                      'Content-Type': 'application/json'
+                  },
+                  'body': json.dumps(body)
+              }
+
+  DALScooterAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${ProjectName}-API-${Environment}'
+      Description: 'API Gateway for DALScooter with Email Verification'
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  AuthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ParentId: !GetAtt DALScooterAPI.RootResourceId
+      PathPart: 'auth'
+
+  RegisterResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ParentId: !Ref AuthResource
+      PathPart: 'register'
+
+  VerifyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ParentId: !Ref AuthResource
+      PathPart: 'verify'
+
+  ResendVerificationResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ParentId: !Ref AuthResource
+      PathPart: 'resend-verification'
+
+  LoginResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ParentId: !Ref AuthResource
+      PathPart: 'login'
+
+  SecurityQuestionResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ParentId: !Ref AuthResource
+      PathPart: 'security-question'
+
+  UserIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ParentId: !Ref SecurityQuestionResource
+      PathPart: '{userId}'
+
+  RegisterMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref RegisterResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '400'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '500'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserRegistrationFunction.Arn}/invocations'
+
+  RegisterOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref RegisterResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+
+  VerifyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref VerifyResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '400'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '500'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${EmailVerificationFunction.Arn}/invocations'
+
+  VerifyOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref VerifyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+
+  ResendVerificationMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref ResendVerificationResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '400'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '500'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ResendVerificationFunction.Arn}/invocations'
+
+  ResendVerificationOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref ResendVerificationResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+
+  LoginMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref LoginResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '400'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '401'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '500'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthenticationFunction.Arn}/invocations'
+
+  LoginOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref LoginResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+
+  SecurityQuestionMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref UserIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.userId: true
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '400'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '404'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '500'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SecurityQuestionFunction.Arn}/invocations'
+
+  SecurityQuestionOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      ResourceId: !Ref UserIdResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+
+  RegisterLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UserRegistrationFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DALScooterAPI}/*/*'
+
+  VerifyLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EmailVerificationFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DALScooterAPI}/*/*'
+
+  ResendVerificationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ResendVerificationFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DALScooterAPI}/*/*'
+
+  AuthLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AuthenticationFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DALScooterAPI}/*/*'
+
+  SecurityQuestionLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SecurityQuestionFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${DALScooterAPI}/*/*'
+
+  APIDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - RegisterMethod
+      - VerifyMethod
+      - ResendVerificationMethod
+      - LoginMethod
+      - SecurityQuestionMethod
+      - RegisterOptionsMethod
+      - VerifyOptionsMethod
+      - ResendVerificationOptionsMethod
+      - LoginOptionsMethod
+      - SecurityQuestionOptionsMethod
+    Properties:
+      RestApiId: !Ref DALScooterAPI
+      StageName: !Ref Environment
+
+Outputs:
+  APIGatewayURL:
+    Description: 'API Gateway URL with Email Verification'
+    Value: !Sub 'https://${DALScooterAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-APIGatewayURL'
+
+  CognitoUserPoolId:
+    Description: 'Cognito User Pool ID'
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-CognitoUserPoolId'
+
+  CognitoUserPoolClientId:
+    Description: 'Cognito User Pool Client ID'
+    Value: !Ref CognitoUserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-CognitoUserPoolClientId'
+
+  UsersTableName:
+    Description: 'DynamoDB Users table name'
+    Value: !Ref UsersTable
+    Export:
+      Name: !Sub '${AWS::StackName}-UsersTableName'
+
+  SecurityQuestionsTableName:
+    Description: 'DynamoDB Security Questions table name'
+    Value: !Ref SecurityQuestionsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityQuestionsTableName'
+
+  UserSessionsTableName:
+    Description: 'DynamoDB User Sessions table name'
+    Value: !Ref UserSessionsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-UserSessionsTableName'
+
+  NotificationLogsTableName:
+    Description: 'DynamoDB Notification Logs table name'
+    Value: !Ref NotificationLogsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-NotificationLogsTableName'
+
+  RegistrationTopicArn:
+    Description: 'Registration Notification Topic ARN'
+    Value: !Ref RegistrationNotificationTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-RegistrationTopicArn'
+
+  LoginTopicArn:
+    Description: 'Login Notification Topic ARN'
+    Value: !Ref LoginNotificationTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-LoginTopicArn'
+
+  RegistrationEndpoint:
+    Description: 'User Registration API Endpoint'
+    Value: !Sub 'https://${DALScooterAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/auth/register'
+
+  EmailVerificationEndpoint:
+    Description: 'Email Verification API Endpoint'
+    Value: !Sub 'https://${DALScooterAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/auth/verify'
+
+  ResendVerificationEndpoint:
+    Description: 'Resend Verification API Endpoint'
+    Value: !Sub 'https://${DALScooterAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/auth/resend-verification'
+
+  LoginEndpoint:
+    Description: 'User Login API Endpoint'
+    Value: !Sub 'https://${DALScooterAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/auth/login'
+
+  

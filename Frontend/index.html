@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DALScooter - User Authentication</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <h1><i class="fas fa-scooter"></i> DALScooter</h1>
+            <p>Serverless Authentication System with Email Verification</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="tabs">
+            <button class="tab-button active" onclick="showTab('register')">
+                <i class="fas fa-user-plus"></i> Register
+            </button>
+            <button class="tab-button" onclick="showTab('verify')">
+                <i class="fas fa-envelope-open-text"></i> Verify Email
+            </button>
+            <button class="tab-button" onclick="showTab('login')">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </button>
+            <button class="tab-button" onclick="showTab('test')">
+                <i class="fas fa-flask"></i> Test Results
+            </button>
+        </div>
+
+        <div id="register-tab" class="tab-content active">
+            <div class="form-container">
+                <h2>User Registration</h2>
+                <form id="register-form">
+                    <div class="form-group">
+                        <label for="reg-email">
+                            <i class="fas fa-envelope"></i> Email Address
+                        </label>
+                        <input type="email" id="reg-email" required placeholder="your.email@dal.ca">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reg-password">
+                            <i class="fas fa-lock"></i> Password
+                        </label>
+                        <input type="password" id="reg-password" required placeholder="Minimum 8 characters">
+                        <small>Must be at least 8 characters with uppercase, lowercase, and numbers</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reg-usertype">
+                            <i class="fas fa-user-tag"></i> User Type
+                        </label>
+                        <select id="reg-usertype" required>
+                            <option value="">Select user type...</option>
+                            <option value="customer">Customer</option>
+                            <option value="franchise">Franchise Operator</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reg-question">
+                            <i class="fas fa-question-circle"></i> Security Question
+                        </label>
+                        <select id="reg-question" required>
+                            <option value="">Choose a security question...</option>
+                            <option value="What is your favorite color?">What is your favorite color?</option>
+                            <option value="What city were you born in?">What city were you born in?</option>
+                            <option value="What is your pet's name?">What is your pet's name?</option>
+                            <option value="What is your favorite food?">What is your favorite food?</option>
+                            <option value="What was your first car?">What was your first car?</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reg-answer">
+                            <i class="fas fa-key"></i> Security Answer
+                        </label>
+                        <input type="text" id="reg-answer" required placeholder="Your answer (case insensitive)">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-user-plus"></i> Register User
+                    </button>
+                </form>
+
+                <div id="register-result" class="result-box"></div>
+            </div>
+        </div>
+
+        <div id="verify-tab" class="tab-content">
+            <div class="form-container">
+                <h2>Email Verification</h2>
+                <p class="info-text">
+                    <i class="fas fa-info-circle"></i>
+                    After registration, check your email for a verification code and enter it below.
+                </p>
+
+                <form id="verify-form">
+                    <div class="form-group">
+                        <label for="verify-email">
+                            <i class="fas fa-envelope"></i> Email Address
+                        </label>
+                        <input type="email" id="verify-email" required placeholder="your.email@dal.ca">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="verify-code">
+                            <i class="fas fa-key"></i> Verification Code
+                        </label>
+                        <input type="text" id="verify-code" required placeholder="Enter 6-digit verification code">
+                        <small>Check your email for the verification code</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check"></i> Verify Email
+                    </button>
+                </form>
+
+                <div class="resend-section">
+                    <p>Didn't receive the code?</p>
+                    <button type="button" class="btn btn-secondary" onclick="resendVerificationCode()">
+                        <i class="fas fa-redo"></i> Resend Verification Code
+                    </button>
+                </div>
+
+                <div id="verify-result" class="result-box"></div>
+            </div>
+        </div>
+
+        <div id="login-tab" class="tab-content">
+            <div class="form-container">
+                <h2>3-Factor Authentication</h2>
+
+                <div id="login-step1" class="auth-step active">
+                    <h3><span class="step-number">1</span> Cognito Authentication</h3>
+                    <form id="login-step1-form">
+                        <div class="form-group">
+                            <label for="login-email">
+                                <i class="fas fa-envelope"></i> Email
+                            </label>
+                            <input type="email" id="login-email" required placeholder="your.email@dal.ca">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="login-password">
+                                <i class="fas fa-lock"></i> Password
+                            </label>
+                            <input type="password" id="login-password" required placeholder="Your password">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-arrow-right"></i> Next Step
+                        </button>
+                    </form>
+                </div>
+
+                <div id="login-step2" class="auth-step">
+                    <h3><span class="step-number">2</span> Security Question</h3>
+                    <div id="security-question-display" class="question-display"></div>
+                    <form id="login-step2-form">
+                        <div class="form-group">
+                            <label for="security-answer">
+                                <i class="fas fa-key"></i> Your Answer
+                            </label>
+                            <input type="text" id="security-answer" required placeholder="Enter your answer">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-arrow-right"></i> Next Step
+                        </button>
+                    </form>
+                </div>
+
+                <div id="login-step3" class="auth-step">
+                    <h3><span class="step-number">3</span> Caesar Cipher Challenge</h3>
+                    <div id="caesar-challenge-display" class="challenge-display"></div>
+                    <form id="login-step3-form">
+                        <div class="form-group">
+                            <label for="caesar-answer">
+                                <i class="fas fa-unlock"></i> Decoded Word
+                            </label>
+                            <input type="text" id="caesar-answer" required placeholder="Enter the decoded word"
+                                style="text-transform: uppercase;">
+                        </div>
+
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-check"></i> Complete Authentication
+                        </button>
+                    </form>
+                </div>
+
+                <div id="login-success" class="auth-step success-panel">
+                    <div class="success-content">
+                        <i class="fas fa-check-circle"></i>
+                        <h3>Authentication Successful!</h3>
+                        <div id="user-info"></div>
+                        <button class="btn btn-secondary" onclick="resetAuthentication()">
+                            <i class="fas fa-redo"></i> Login Again
+                        </button>
+                    </div>
+                </div>
+
+                <div id="login-result" class="result-box"></div>
+            </div>
+        </div>
+
+        <div id="test-tab" class="tab-content">
+            <div class="test-container">
+                <h2>API Testing Results</h2>
+                <div class="test-controls">
+                    <button class="btn btn-primary" onclick="runAllTests()">
+                        <i class="fas fa-play"></i> Run All Tests
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearTestResults()">
+                        <i class="fas fa-trash"></i> Clear Results
+                    </button>
+                </div>
+
+                <div id="test-results" class="test-results">
+                    <p>Click "Run All Tests" to execute comprehensive API testing...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 DALScooter - Serverless Authentication System</p>
+            <p>Multi-Factor Authentication with Email Verification</p>
+        </div>
+    </footer>
+
+    <input type="hidden" id="current-session-id">
+    <input type="hidden" id="current-user-id">
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

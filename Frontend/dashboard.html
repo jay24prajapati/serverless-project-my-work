@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DALScooter - Customer Dashboard</title>
+    <link rel="stylesheet" href="dashboard-styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <header class="dashboard-header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <h1><i class="fas fa-scooter"></i> DALScooter</h1>
+                    <span class="dashboard-label">Customer Dashboard</span>
+                </div>
+                <div class="user-info">
+                    <span id="welcome-user">Welcome, Customer!</span>
+                    <button class="btn btn-logout" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="dashboard-main">
+        <div class="container">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-motorcycle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Available Scooters</h3>
+                        <span class="stat-number">24</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Your Bookings</h3>
+                        <span class="stat-number" id="user-bookings">0</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-star"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Reward Points</h3>
+                        <span class="stat-number">150</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="booking-section">
+                <h2><i class="fas fa-calendar-plus"></i> Book a Scooter</h2>
+
+                <div class="scooter-types">
+                    <div class="scooter-card" data-type="ebike" onclick="selectScooter('ebike')">
+                        <div class="scooter-image">
+                            <i class="fas fa-bicycle"></i>
+                        </div>
+                        <h3>eBike</h3>
+                        <p>Electric bicycle with pedal assist</p>
+                        <div class="price">$15/hour</div>
+                        <div class="availability">8 available</div>
+                    </div>
+
+                    <div class="scooter-card" data-type="gyroscooter" onclick="selectScooter('gyroscooter')">
+                        <div class="scooter-image">
+                            <i class="fas fa-skating"></i>
+                        </div>
+                        <h3>Gyroscooter</h3>
+                        <p>Self-balancing electric scooter</p>
+                        <div class="price">$20/hour</div>
+                        <div class="availability">12 available</div>
+                    </div>
+
+                    <div class="scooter-card" data-type="segway" onclick="selectScooter('segway')">
+                        <div class="scooter-image">
+                            <i class="fas fa-wheelchair"></i>
+                        </div>
+                        <h3>Segway</h3>
+                        <p>Premium personal transporter</p>
+                        <div class="price">$25/hour</div>
+                        <div class="availability">4 available</div>
+                    </div>
+                </div>
+
+                <div class="booking-form-container" id="booking-form-container">
+                    <h3>Complete Your Booking</h3>
+                    <form id="booking-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="selected-scooter">
+                                    <i class="fas fa-scooter"></i> Selected Scooter
+                                </label>
+                                <input type="text" id="selected-scooter" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="pickup-location">
+                                    <i class="fas fa-map-marker-alt"></i> Pickup Location
+                                </label>
+                                <select id="pickup-location" required>
+                                    <option value="">Select pickup location...</option>
+                                    <option value="Downtown Halifax">Downtown Halifax</option>
+                                    <option value="Dalhousie University">Dalhousie University</option>
+                                    <option value="Halifax Waterfront">Halifax Waterfront</option>
+                                    <option value="Spring Garden Road">Spring Garden Road</option>
+                                    <option value="Halifax Shopping Centre">Halifax Shopping Centre</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="start-time">
+                                    <i class="fas fa-play"></i> Start Time
+                                </label>
+                                <input type="datetime-local" id="start-time" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="duration">
+                                    <i class="fas fa-hourglass-half"></i> Duration
+                                </label>
+                                <select id="duration" required>
+                                    <option value="">Select duration...</option>
+                                    <option value="1">1 hour</option>
+                                    <option value="2">2 hours</option>
+                                    <option value="3">3 hours</option>
+                                    <option value="4">4 hours</option>
+                                    <option value="6">6 hours</option>
+                                    <option value="8">8 hours (Full day)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="special-requests">
+                                <i class="fas fa-comment"></i> Special Requests (Optional)
+                            </label>
+                            <textarea id="special-requests" rows="3"
+                                placeholder="Any special requirements or notes..."></textarea>
+                        </div>
+
+                        <div class="booking-summary">
+                            <h4>Booking Summary</h4>
+                            <div class="summary-row">
+                                <span>Scooter Type:</span>
+                                <span id="summary-scooter">-</span>
+                            </div>
+                            <div class="summary-row">
+                                <span>Duration:</span>
+                                <span id="summary-duration">-</span>
+                            </div>
+                            <div class="summary-row">
+                                <span>Rate:</span>
+                                <span id="summary-rate">-</span>
+                            </div>
+                            <div class="summary-row total">
+                                <span>Total Cost:</span>
+                                <span id="summary-total">$0.00</span>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="cancelBooking()">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-check"></i> Confirm Booking
+                            </button>
+                        </div>
+                    </form>
+
+                    <div id="booking-result" class="result-box"></div>
+                </div>
+            </div>
+
+            <div class="current-bookings">
+                <h2><i class="fas fa-list"></i> Your Current Bookings</h2>
+                <div id="bookings-list" class="bookings-list">
+                    <div class="no-bookings">
+                        <i class="fas fa-calendar-times"></i>
+                        <p>No active bookings. Book a scooter above to get started!</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-activity">
+                <h2><i class="fas fa-history"></i> Recent Activity</h2>
+                <div id="activity-list" class="activity-list">
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="fas fa-user-check"></i>
+                        </div>
+                        <div class="activity-content">
+                            <h4>Account Login</h4>
+                            <p>Successfully logged in with 3-factor authentication</p>
+                            <span class="activity-time">Just now</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="dashboard-footer">
+        <div class="container">
+            <p>&copy; 2025 DALScooter - Customer Dashboard | Need help? <a href="mailto:support@dalscooter.com">Contact
+                    Support</a></p>
+        </div>
+    </footer>
+
+    <input type="hidden" id="user-id">
+    <input type="hidden" id="user-email">
+    <input type="hidden" id="user-type">
+    <input type="hidden" id="session-id">
+
+    <script src="config.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+
+</html>
