@@ -120,6 +120,11 @@ async function handleRegistration(event) {
             
             form.reset();
             
+            // Log notification event
+            logNotificationEvent('registration', result.userId, result.email, 'initiated', {
+                userType: result.userType
+            });
+            
         } else {
             showResultBox(resultDiv, 'error', `Registration Failed: ${result.error}`);
         }
@@ -384,6 +389,11 @@ async function handleLoginStep3(event) {
             showAuthenticationSuccess(result);
             showResultBox(resultDiv, 'success', `Authentication Complete: All 3 factors verified successfully`);
             
+            // Log notification event
+            logNotificationEvent('login', result.userId, result.email, 'completed', {
+                userType: result.userType
+            });
+            
         } else {
             showResultBox(resultDiv, 'error', `Step 3 Failed: ${result.error}`);
         }
@@ -417,6 +427,8 @@ function showAuthenticationSuccess(result) {
         
         const userInfo = document.getElementById('user-info');
         if (userInfo) {
+            const dashboardType = result.userType === 'franchise' ? 'Franchise Dashboard' : 'Customer Dashboard';
+            
             userInfo.innerHTML = `
                 <strong>User ID:</strong> ${result.userId}<br>
                 <strong>Email:</strong> ${result.email}<br>
@@ -424,8 +436,8 @@ function showAuthenticationSuccess(result) {
                 <strong>Session ID:</strong> ${result.sessionId}<br>
                 <strong>Access Token:</strong> ${result.accessToken ? result.accessToken.substring(0, 50) + '...' : 'N/A'}<br><br>
                 <div style="background: #d4edda; padding: 1rem; border-radius: 8px; margin-top: 1rem; text-align: center;">
-                    <strong>Redirecting to Dashboard...</strong><br>
-                    <p style="margin: 0.5rem 0;">You will be redirected to the customer dashboard in 3 seconds.</p>
+                    <strong>Redirecting to ${dashboardType}...</strong><br>
+                    <p style="margin: 0.5rem 0;">You will be redirected to your ${result.userType} dashboard in 3 seconds.</p>
                     <i class="fas fa-spinner fa-spin" style="margin-top: 0.5rem;"></i>
                 </div>
             `;
@@ -440,7 +452,8 @@ function showAuthenticationSuccess(result) {
         localStorage.setItem('dalscooter_accessToken', result.accessToken);
     }
     
-    showNotification('Authentication successful! Redirecting to dashboard...', 'success');
+    const dashboardType = result.userType === 'franchise' ? 'franchise' : 'customer';
+    showNotification(`Authentication successful! Redirecting to ${dashboardType} dashboard...`, 'success');
     
     setTimeout(() => {
         redirectToDashboard(result);
@@ -448,9 +461,12 @@ function showAuthenticationSuccess(result) {
 }
 
 function redirectToDashboard(userData) {
-    const dashboardUrl = `dashboard.html?userId=${encodeURIComponent(userData.userId)}&email=${encodeURIComponent(userData.email)}&userType=${encodeURIComponent(userData.userType)}&sessionId=${encodeURIComponent(userData.sessionId)}`;
+    const dashboardFile = userData.userType === 'franchise' ? 'franchise-dashboard.html' : 'dashboard.html';
     
-    showNotification('Redirecting to your dashboard...', 'success');
+    const dashboardUrl = `${dashboardFile}?userId=${encodeURIComponent(userData.userId)}&email=${encodeURIComponent(userData.email)}&userType=${encodeURIComponent(userData.userType)}&sessionId=${encodeURIComponent(userData.sessionId)}`;
+    
+    const dashboardType = userData.userType === 'franchise' ? 'franchise' : 'customer';
+    showNotification(`Redirecting to your ${dashboardType} dashboard...`, 'success');
     
     window.location.href = dashboardUrl;
 }
@@ -772,4 +788,37 @@ function clearResultBox(element) {
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function logNotificationEvent(eventType, userId, email, status, details = {}) {
+    if (CONFIG.FEATURES.NOTIFICATION_LOGGING) {
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            eventType: eventType,
+            userId: userId,
+            email: email,
+            status: status,
+            details: details,
+            browser: navigator.userAgent,
+            url: window.location.href
+        };
+        
+        debugLog(`Notification Event [${eventType}]:`, logEntry);
+        
+        const logs = JSON.parse(localStorage.getItem('dalscooter_notification_logs') || '[]');
+        logs.push(logEntry);
+        
+        if (logs.length > 100) {
+            logs.splice(0, logs.length - 100);
+        }
+        
+        localStorage.setItem('dalscooter_notification_logs', JSON.stringify(logs));
+    }
+}
+
+function debugLog(message, data = null) {
+    if (CONFIG.DEBUG) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [DALScooter] ${message}`, data || '');
+    }
 }

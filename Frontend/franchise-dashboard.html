@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DALScooter - Franchise Dashboard</title>
+    <link rel="stylesheet" href="franchise-dashboard-styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <header class="dashboard-header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <h1><i class="fas fa-scooter"></i> DALScooter</h1>
+                    <span class="dashboard-label">Franchise Operator Dashboard</span>
+                </div>
+                <div class="user-info">
+                    <span id="welcome-user">Welcome, Franchise Operator!</span>
+                    <button class="btn btn-logout" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="dashboard-main">
+        <div class="container">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-motorcycle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Scooters</h3>
+                        <span class="stat-number" id="total-scooters">24</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Active Bookings</h3>
+                        <span class="stat-number" id="active-bookings">8</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Today's Revenue</h3>
+                        <span class="stat-number" id="todays-revenue">$340</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Customers</h3>
+                        <span class="stat-number" id="total-customers">156</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="inventory-section">
+                <h2><i class="fas fa-warehouse"></i> Scooter Inventory Management</h2>
+
+                <div class="scooter-management">
+                    <div class="scooter-types-grid">
+                        <div class="scooter-manage-card" data-type="ebike">
+                            <div class="scooter-image">
+                                <i class="fas fa-bicycle"></i>
+                            </div>
+                            <h3>eBikes</h3>
+                            <div class="inventory-stats">
+                                <div class="stat-item">
+                                    <span>Available: <strong>8</strong></span>
+                                </div>
+                                <div class="stat-item">
+                                    <span>In Use: <strong>4</strong></span>
+                                </div>
+                                <div class="stat-item">
+                                    <span>Maintenance: <strong>1</strong></span>
+                                </div>
+                            </div>
+                            <div class="pricing-info">
+                                <span>Current Rate: <strong>$15/hour</strong></span>
+                            </div>
+                            <button class="btn btn-primary" onclick="manageScooterType('ebike')">
+                                <i class="fas fa-cog"></i> Manage
+                            </button>
+                        </div>
+
+                        <div class="scooter-manage-card" data-type="gyroscooter">
+                            <div class="scooter-image">
+                                <i class="fas fa-skating"></i>
+                            </div>
+                            <h3>Gyroscooters</h3>
+                            <div class="inventory-stats">
+                                <div class="stat-item">
+                                    <span>Available: <strong>12</strong></span>
+                                </div>
+                                <div class="stat-item">
+                                    <span>In Use: <strong>3</strong></span>
+                                </div>
+                                <div class="stat-item">
+                                    <span>Maintenance: <strong>0</strong></span>
+                                </div>
+                            </div>
+                            <div class="pricing-info">
+                                <span>Current Rate: <strong>$20/hour</strong></span>
+                            </div>
+                            <button class="btn btn-primary" onclick="manageScooterType('gyroscooter')">
+                                <i class="fas fa-cog"></i> Manage
+                            </button>
+                        </div>
+
+                        <div class="scooter-manage-card" data-type="segway">
+                            <div class="scooter-image">
+                                <i class="fas fa-wheelchair"></i>
+                            </div>
+                            <h3>Segways</h3>
+                            <div class="inventory-stats">
+                                <div class="stat-item">
+                                    <span>Available: <strong>4</strong></span>
+                                </div>
+                                <div class="stat-item">
+                                    <span>In Use: <strong>1</strong></span>
+                                </div>
+                                <div class="stat-item">
+                                    <span>Maintenance: <strong>0</strong></span>
+                                </div>
+                            </div>
+                            <div class="pricing-info">
+                                <span>Current Rate: <strong>$25/hour</strong></span>
+                            </div>
+                            <button class="btn btn-primary" onclick="manageScooterType('segway')">
+                                <i class="fas fa-cog"></i> Manage
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="quick-actions">
+                        <button class="btn btn-success" onclick="addNewScooter()">
+                            <i class="fas fa-plus"></i> Add New Scooter
+                        </button>
+                        <button class="btn btn-secondary" onclick="bulkUpdatePricing()">
+                            <i class="fas fa-tags"></i> Update Pricing
+                        </button>
+                        <button class="btn btn-warning" onclick="generateDiscountCode()">
+                            <i class="fas fa-percent"></i> Create Discount Code
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bookings-section">
+                <h2><i class="fas fa-calendar"></i> Current Bookings</h2>
+                <div id="franchise-bookings-list" class="bookings-list">
+                    <div class="booking-item">
+                        <div class="booking-info">
+                            <h4>eBike Booking - Customer #1234</h4>
+                            <p><i class="fas fa-envelope"></i> customer@example.com</p>
+                            <p><i class="fas fa-map-marker-alt"></i> Downtown Halifax</p>
+                            <p><i class="fas fa-clock"></i> Today 2:00 PM - 6:00 PM (4h)</p>
+                            <p><i class="fas fa-dollar-sign"></i> Revenue: $60</p>
+                        </div>
+                        <div class="booking-actions">
+                            <span class="booking-status confirmed">Active</span>
+                            <button class="btn btn-sm btn-secondary">
+                                <i class="fas fa-comment"></i> Contact
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="booking-item">
+                        <div class="booking-info">
+                            <h4>Gyroscooter Booking - Customer #5678</h4>
+                            <p><i class="fas fa-envelope"></i> user@dal.ca</p>
+                            <p><i class="fas fa-map-marker-alt"></i> Dalhousie University</p>
+                            <p><i class="fas fa-clock"></i> Tomorrow 10:00 AM - 2:00 PM (4h)</p>
+                            <p><i class="fas fa-dollar-sign"></i> Revenue: $80</p>
+                        </div>
+                        <div class="booking-actions">
+                            <span class="booking-status pending">Upcoming</span>
+                            <button class="btn btn-sm btn-secondary">
+                                <i class="fas fa-comment"></i> Contact
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="analytics-section">
+                <h2><i class="fas fa-chart-bar"></i> Business Analytics</h2>
+                <div class="analytics-grid">
+                    <div class="analytics-card">
+                        <h3>Revenue Trends</h3>
+                        <div class="metric">
+                            <span class="metric-label">This Week:</span>
+                            <span class="metric-value">$2,340</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Last Week:</span>
+                            <span class="metric-value">$2,100</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Growth:</span>
+                            <span class="metric-value positive">+11.4%</span>
+                        </div>
+                    </div>
+
+                    <div class="analytics-card">
+                        <h3>Popular Scooters</h3>
+                        <div class="metric">
+                            <span class="metric-label">eBikes:</span>
+                            <span class="metric-value">45% bookings</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Gyroscooters:</span>
+                            <span class="metric-value">35% bookings</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Segways:</span>
+                            <span class="metric-value">20% bookings</span>
+                        </div>
+                    </div>
+
+                    <div class="analytics-card">
+                        <h3>Customer Satisfaction</h3>
+                        <div class="metric">
+                            <span class="metric-label">Average Rating:</span>
+                            <span class="metric-value">4.7/5 ⭐</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Total Reviews:</span>
+                            <span class="metric-value">89</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Response Rate:</span>
+                            <span class="metric-value">98%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-activity">
+                <h2><i class="fas fa-history"></i> Recent Activity</h2>
+                <div id="franchise-activity-list" class="activity-list">
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="fas fa-user-check"></i>
+                        </div>
+                        <div class="activity-content">
+                            <h4>Franchise Login</h4>
+                            <p>Successfully logged in with 3-factor authentication</p>
+                            <span class="activity-time">Just now</span>
+                        </div>
+                    </div>
+                    
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div class="activity-content">
+                            <h4>New Booking Received</h4>
+                            <p>eBike booking for 4 hours - Downtown Halifax</p>
+                            <span class="activity-time">2 minutes ago</span>
+                        </div>
+                    </div>
+                    
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="fas fa-dollar-sign"></i>
+                        </div>
+                        <div class="activity-content">
+                            <h4>Payment Received</h4>
+                            <p>$60 payment for booking #DAL-ABC123</p>
+                            <span class="activity-time">15 minutes ago</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="dashboard-footer">
+        <div class="container">
+            <p>&copy; 2025 DALScooter - Franchise Dashboard | Need help? <a href="mailto:franchise@dalscooter.com">Contact Franchise Support</a></p>
+        </div>
+    </footer>
+
+    <input type="hidden" id="user-id">
+    <input type="hidden" id="user-email">
+    <input type="hidden" id="user-type">
+    <input type="hidden" id="session-id">
+
+    <script src="config.js"></script>
+    <script src="franchise-dashboard.js"></script>
+</body>
+
+</html>

@@ -1,5 +1,5 @@
 const CONFIG = {
-    API_BASE_URL: 'https://500xl4gx7l.execute-api.us-east-1.amazonaws.com/dev',
+    API_BASE_URL: 'https://56vkl0dwf4.execute-api.us-east-1.amazonaws.com/dev',
     
     ENDPOINTS: {
         REGISTER: '/auth/register',
@@ -11,11 +11,42 @@ const CONFIG = {
     },
     
     SNS_TOPICS: {
-        REGISTRATION: 'arn:aws:sns:region:account:DALScooter-Registration-Notifications-env',
-        LOGIN: 'arn:aws:sns:region:account:DALScooter-Login-Notifications-env',
-        BOOKING: 'arn:aws:sns:region:account:DALScooter-Booking-Notifications-env',
-        EMAIL: 'arn:aws:sns:region:account:DALScooter-Email-Notifications-env',
-        SYSTEM_ALERTS: 'arn:aws:sns:region:account:DALScooter-System-Alerts-env'
+        REGISTRATION: 'arn:aws:sns:us-east-1:601148044385:DALScooter-Registration-Notifications-dev',
+        LOGIN: 'arn:aws:sns:us-east-1:601148044385:DALScooter-Login-Notifications-dev',
+        BOOKING: 'arn:aws:sns:us-east-1:601148044385:DALScooter-Booking-Notifications-dev',
+        EMAIL: 'arn:aws:sns:us-east-1:601148044385:DALScooter-Email-Notifications-dev',
+        SYSTEM_ALERTS: 'arn:aws:sns:us-east-1:601148044385:DALScooter-System-Alerts-dev'
+    },
+    
+    SQS_QUEUES: {
+        REGISTRATION_NOTIFICATIONS: 'arn:aws:sqs:us-east-1:601148044385:DALScooter-Registration-Notifications-Queue-dev',
+        LOGIN_NOTIFICATIONS: 'arn:aws:sqs:us-east-1:601148044385:DALScooter-Login-Notifications-Queue-dev',
+        BOOKING_NOTIFICATIONS: 'arn:aws:sqs:us-east-1:601148044385:DALScooter-Booking-Notifications-Queue-dev'
+    },
+    
+    NOTIFICATION_SETTINGS: {
+        SENDER_EMAIL: 'noreply@dalscooter.com',
+        REGISTRATION_ENABLED: true,
+        LOGIN_ENABLED: true,
+        BOOKING_ENABLED: true,
+        EMAIL_TEMPLATES: {
+            REGISTRATION: {
+                SUBJECT: 'Welcome to DALScooter - Registration Successful!',
+                TEMPLATE_TYPE: 'welcome'
+            },
+            LOGIN: {
+                SUBJECT: 'DALScooter - Successful Login Alert',
+                TEMPLATE_TYPE: 'security'
+            },
+            BOOKING_CONFIRMATION: {
+                SUBJECT: 'DALScooter - Booking Confirmed',
+                TEMPLATE_TYPE: 'booking'
+            },
+            BOOKING_FAILURE: {
+                SUBJECT: 'DALScooter - Booking Failed',
+                TEMPLATE_TYPE: 'booking_error'
+            }
+        }
     },
     
     DASHBOARD: {
@@ -24,19 +55,22 @@ const CONFIG = {
                 name: 'eBike',
                 description: 'Electric bicycle with pedal assist',
                 price: 15,
-                icon: 'fas fa-bicycle'
+                icon: 'fas fa-bicycle',
+                features: ['Long Battery', 'Eco-Friendly']
             },
             'gyroscooter': {
                 name: 'Gyroscooter', 
                 description: 'Self-balancing electric scooter',
                 price: 20,
-                icon: 'fas fa-skating'
+                icon: 'fas fa-skating',
+                features: ['Self-Balancing', 'Fast Speed']
             },
             'segway': {
                 name: 'Segway',
                 description: 'Premium personal transporter', 
                 price: 25,
-                icon: 'fas fa-wheelchair'
+                icon: 'fas fa-wheelchair',
+                features: ['Premium', 'Extra Safe']
             }
         },
         PICKUP_LOCATIONS: [
@@ -58,10 +92,17 @@ const CONFIG = {
         MULTI_FACTOR_AUTH: true,
         CAESAR_CIPHER: true,
         NOTIFICATIONS: true,
+        EMAIL_NOTIFICATIONS: true,
+        LOGIN_NOTIFICATIONS: true,
+        REGISTRATION_NOTIFICATIONS: true,
         COMPREHENSIVE_TESTING: true,
         DASHBOARD: true,
         BOOKING_SYSTEM: true,
-        REAL_TIME_NOTIFICATIONS: true
+        REAL_TIME_NOTIFICATIONS: true,
+        NOTIFICATION_LOGGING: true,
+        DEAD_LETTER_QUEUE: true,
+        FEEDBACK_SYSTEM: true,
+        SEPARATE_DASHBOARDS: true
     }
 };
 
@@ -100,6 +141,15 @@ function validateBookingTime(startTime) {
     }
     
     return { valid: true };
+}
+
+function getNotificationSettings(notificationType) {
+    return CONFIG.NOTIFICATION_SETTINGS.EMAIL_TEMPLATES[notificationType.toUpperCase()] || null;
+}
+
+function isNotificationEnabled(notificationType) {
+    const featureKey = `${notificationType.toUpperCase()}_NOTIFICATIONS`;
+    return CONFIG.FEATURES[featureKey] === true;
 }
 
 function showNotification(message, type = 'info') {
@@ -174,7 +224,7 @@ function validateSystemConfiguration() {
         }
     });
     
-    const requiredFeatures = ['EMAIL_VERIFICATION', 'MULTI_FACTOR_AUTH'];
+    const requiredFeatures = ['EMAIL_VERIFICATION', 'MULTI_FACTOR_AUTH', 'NOTIFICATIONS'];
     requiredFeatures.forEach(feature => {
         if (!CONFIG.FEATURES[feature]) {
             issues.push(`Feature disabled: ${feature}`);
@@ -188,6 +238,16 @@ function validateSystemConfiguration() {
         
         if (!CONFIG.DASHBOARD.PICKUP_LOCATIONS || CONFIG.DASHBOARD.PICKUP_LOCATIONS.length === 0) {
             issues.push('Dashboard enabled but no pickup locations configured');
+        }
+    }
+    
+    if (CONFIG.FEATURES.NOTIFICATIONS) {
+        if (!CONFIG.NOTIFICATION_SETTINGS.SENDER_EMAIL) {
+            issues.push('Notifications enabled but sender email not configured');
+        }
+        
+        if (CONFIG.NOTIFICATION_SETTINGS.SENDER_EMAIL === 'noreply@dalscooter.com') {
+            debugLog('Using default sender email - update for production use');
         }
     }
     
@@ -212,12 +272,63 @@ function updateSnsTopicArns(topicArns) {
     debugLog('Updated SNS Topics:', CONFIG.SNS_TOPICS);
 }
 
+function updateSqsQueueArns(queueArns) {
+    debugLog('Updating SQS Queue ARNs...', queueArns);
+    
+    Object.keys(queueArns).forEach(queueType => {
+        if (CONFIG.SQS_QUEUES[queueType.toUpperCase()]) {
+            CONFIG.SQS_QUEUES[queueType.toUpperCase()] = queueArns[queueType];
+        }
+    });
+    
+    debugLog('Updated SQS Queues:', CONFIG.SQS_QUEUES);
+}
+
+function logNotificationEvent(eventType, userId, email, status, details = {}) {
+    if (CONFIG.FEATURES.NOTIFICATION_LOGGING) {
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            eventType: eventType,
+            userId: userId,
+            email: email,
+            status: status,
+            details: details,
+            browser: navigator.userAgent,
+            url: window.location.href
+        };
+        
+        debugLog(`Notification Event [${eventType}]:`, logEntry);
+        
+        // Store in localStorage for debugging (in real implementation, send to server)
+        const logs = JSON.parse(localStorage.getItem('dalscooter_notification_logs') || '[]');
+        logs.push(logEntry);
+        
+        // Keep only last 100 logs
+        if (logs.length > 100) {
+            logs.splice(0, logs.length - 100);
+        }
+        
+        localStorage.setItem('dalscooter_notification_logs', JSON.stringify(logs));
+    }
+}
+
+function getDashboardUrl(userType) {
+    return userType === 'franchise' ? 'franchise-dashboard.html' : 'dashboard.html';
+}
+
+function redirectToCorrectDashboard(userData) {
+    const dashboardFile = getDashboardUrl(userData.userType);
+    const dashboardUrl = `${dashboardFile}?userId=${encodeURIComponent(userData.userId)}&email=${encodeURIComponent(userData.email)}&userType=${encodeURIComponent(userData.userType)}&sessionId=${encodeURIComponent(userData.sessionId)}`;
+    window.location.href = dashboardUrl;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     debugLog('DALScooter System Initialized');
     debugLog('Current API URL:', CONFIG.API_BASE_URL);
     debugLog('Available Endpoints:', Object.keys(CONFIG.ENDPOINTS));
     debugLog('Enabled Features:', Object.keys(CONFIG.FEATURES).filter(f => CONFIG.FEATURES[f]));
     debugLog('Dashboard Config:', CONFIG.DASHBOARD);
+    debugLog('Notification Settings:', CONFIG.NOTIFICATION_SETTINGS);
     
     const isValid = validateSystemConfiguration();
     
@@ -225,8 +336,13 @@ document.addEventListener('DOMContentLoaded', function() {
         console.warn('System configuration needs attention');
     }
     
-    if (CONFIG.SNS_TOPICS.REGISTRATION.includes('account')) {
-        console.warn('SNS Topic ARNs are using placeholder values. Update CONFIG.SNS_TOPICS with actual ARNs.');
+    if (CONFIG.FEATURES.NOTIFICATIONS) {
+        debugLog('Email notification system enabled');
+        debugLog('Supported notification types:', Object.keys(CONFIG.NOTIFICATION_SETTINGS.EMAIL_TEMPLATES));
+    }
+    
+    if (CONFIG.FEATURES.SEPARATE_DASHBOARDS) {
+        debugLog('Separate dashboard routing enabled for customers and franchise operators');
     }
 });
 

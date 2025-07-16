@@ -57,6 +57,15 @@
                         <span class="stat-number">150</span>
                     </div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Spent</h3>
+                        <span class="stat-number">$340</span>
+                    </div>
+                </div>
             </div>
 
             <div class="booking-section">
@@ -71,6 +80,10 @@
                         <p>Electric bicycle with pedal assist</p>
                         <div class="price">$15/hour</div>
                         <div class="availability">8 available</div>
+                        <div class="features">
+                            <span><i class="fas fa-battery-three-quarters"></i> Long Battery</span>
+                            <span><i class="fas fa-leaf"></i> Eco-Friendly</span>
+                        </div>
                     </div>
 
                     <div class="scooter-card" data-type="gyroscooter" onclick="selectScooter('gyroscooter')">
@@ -81,6 +94,10 @@
                         <p>Self-balancing electric scooter</p>
                         <div class="price">$20/hour</div>
                         <div class="availability">12 available</div>
+                        <div class="features">
+                            <span><i class="fas fa-balance-scale"></i> Self-Balancing</span>
+                            <span><i class="fas fa-tachometer-alt"></i> Fast Speed</span>
+                        </div>
                     </div>
 
                     <div class="scooter-card" data-type="segway" onclick="selectScooter('segway')">
@@ -91,6 +108,10 @@
                         <p>Premium personal transporter</p>
                         <div class="price">$25/hour</div>
                         <div class="availability">4 available</div>
+                        <div class="features">
+                            <span><i class="fas fa-crown"></i> Premium</span>
+                            <span><i class="fas fa-shield-alt"></i> Extra Safe</span>
+                        </div>
                     </div>
                 </div>
 
@@ -194,6 +215,46 @@
                 </div>
             </div>
 
+            <div class="feedback-section">
+                <h2><i class="fas fa-comment-dots"></i> Leave Feedback</h2>
+                <div class="feedback-container">
+                    <form id="feedback-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="feedback-booking">
+                                    <i class="fas fa-id-card"></i> Booking Reference
+                                </label>
+                                <input type="text" id="feedback-booking" placeholder="Enter booking ID (optional)">
+                            </div>
+                            <div class="form-group">
+                                <label for="feedback-rating">
+                                    <i class="fas fa-star"></i> Rating
+                                </label>
+                                <select id="feedback-rating" required>
+                                    <option value="">Select rating...</option>
+                                    <option value="5">⭐⭐⭐⭐⭐ Excellent</option>
+                                    <option value="4">⭐⭐⭐⭐ Good</option>
+                                    <option value="3">⭐⭐⭐ Average</option>
+                                    <option value="2">⭐⭐ Poor</option>
+                                    <option value="1">⭐ Very Poor</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="feedback-message">
+                                <i class="fas fa-message"></i> Your Feedback
+                            </label>
+                            <textarea id="feedback-message" rows="4" required
+                                placeholder="Tell us about your experience..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i> Submit Feedback
+                        </button>
+                    </form>
+                    <div id="feedback-result" class="result-box"></div>
+                </div>
+            </div>
+
             <div class="recent-activity">
                 <h2><i class="fas fa-history"></i> Recent Activity</h2>
                 <div id="activity-list" class="activity-list">
@@ -202,7 +263,7 @@
                             <i class="fas fa-user-check"></i>
                         </div>
                         <div class="activity-content">
-                            <h4>Account Login</h4>
+                            <h4>Customer Login</h4>
                             <p>Successfully logged in with 3-factor authentication</p>
                             <span class="activity-time">Just now</span>
                         </div>

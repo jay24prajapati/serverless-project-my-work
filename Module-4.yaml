@@ -1,0 +1,508 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DALScooter Notification Module - Email Notifications via SNS/SQS/SES'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'DALScooter'
+    Description: 'Project name for resource naming'
+  
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues: 
+      - dev
+      - prod
+    Description: 'Environment name'
+    
+  RegistrationTopicArn:
+    Type: String
+    Description: 'ARN of the existing Registration SNS Topic from Module 1'
+    
+  LoginTopicArn:
+    Type: String
+    Description: 'ARN of the existing Login SNS Topic from Module 1'
+
+Resources:
+  # SQS Queue for Registration Notifications
+  RegistrationNotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectName}-Registration-Notifications-Queue-${Environment}'
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt RegistrationNotificationDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  RegistrationNotificationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectName}-Registration-Notifications-DLQ-${Environment}'
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  LoginNotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectName}-Login-Notifications-Queue-${Environment}'
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt LoginNotificationDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  LoginNotificationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectName}-Login-Notifications-DLQ-${Environment}'
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  RegistrationQueueSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref RegistrationTopicArn
+      Protocol: sqs
+      Endpoint: !GetAtt RegistrationNotificationQueue.Arn
+
+  LoginQueueSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref LoginTopicArn
+      Protocol: sqs
+      Endpoint: !GetAtt LoginNotificationQueue.Arn
+
+  RegistrationQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref RegistrationNotificationQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt RegistrationNotificationQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref RegistrationTopicArn
+
+  LoginQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref LoginNotificationQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt LoginNotificationQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref LoginTopicArn
+
+  NotificationDeliveryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-NotificationDelivery-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: notificationId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: deliveryStatus
+          AttributeType: S
+      KeySchema:
+        - AttributeName: notificationId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: DeliveryStatusIndex
+          KeySchema:
+            - AttributeName: deliveryStatus
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Email Notification SNS Topic (alternative to SES)
+  EmailNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-Email-Notifications-${Environment}'
+      DisplayName: 'DALScooter Email Notifications'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  RegistrationEmailProcessor:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-RegistrationEmailProcessor-${Environment}'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          NOTIFICATION_TABLE: !Ref NotificationDeliveryTable
+          EMAIL_TOPIC_ARN: !Ref EmailNotificationTopic
+          ENVIRONMENT: !Ref Environment
+          PROJECT_NAME: !Ref ProjectName
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import uuid
+          import os
+          from datetime import datetime, timedelta
+          
+          sns = boto3.client('sns')
+          dynamodb = boto3.resource('dynamodb')
+          
+          def lambda_handler(event, context):
+              print(f"Registration email processor event: {json.dumps(event)}")
+              
+              notification_table = dynamodb.Table(os.environ['NOTIFICATION_TABLE'])
+              email_topic_arn = os.environ['EMAIL_TOPIC_ARN']
+              
+              for record in event['Records']:
+                  try:
+                      message_body = json.loads(record['body'])
+                      sns_message = json.loads(message_body['Message'])
+                      
+                      print(f"Processing registration notification: {sns_message}")
+                      
+                      email = sns_message.get('email', '')
+                      user_id = sns_message.get('userId', '')
+                      user_type = sns_message.get('userType', 'customer')
+                      timestamp = sns_message.get('timestamp', datetime.now().isoformat())
+                      
+                      if not email or not user_id:
+                          print(f"Invalid notification data: missing email or userId")
+                          continue
+                      
+                      notification_id = str(uuid.uuid4())
+                      
+                      # Send notification via SNS
+                      email_sent = send_registration_notification(email, user_id, user_type, notification_id, email_topic_arn)
+                      
+                      log_notification_delivery(
+                          notification_table,
+                          notification_id,
+                          user_id,
+                          email,
+                          'registration',
+                          'sent' if email_sent else 'failed',
+                          timestamp
+                      )
+                      
+                      print(f"Registration notification {'sent' if email_sent else 'failed'} for user: {user_id}")
+                      
+                  except Exception as e:
+                      print(f"Error processing registration notification: {str(e)}")
+                      continue
+              
+              return {'statusCode': 200, 'body': 'Registration notifications processed'}
+          
+          def send_registration_notification(email, user_id, user_type, notification_id, topic_arn):
+              try:
+                  if user_type.lower() == 'franchise':
+                      user_type_display = "Franchise Operator"
+                      welcome_message = "Welcome to DALScooter as a franchise operator!"
+                      features = "Manage scooters, set rates, handle bookings, view analytics"
+                  else:
+                      user_type_display = "Customer"
+                      welcome_message = "Welcome to DALScooter - your premium scooter rental service!"
+                      features = "Browse scooters, make bookings, check availability, leave feedback"
+                  
+                  subject = "DALScooter Registration Successful!"
+                  
+                  message = f"""
+                  🛴 {welcome_message}
+                  
+                  Account Details:
+                  📧 Email: {email}
+                  🆔 User ID: {user_id}
+                  👤 Account Type: {user_type_display}
+                  📅 Registration: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
+                  
+                  🚀 What's Next:
+                  {features}
+                  
+                  🔐 Security: 3-factor authentication enabled
+                  📞 Support: support@dalscooter.com | 1-800-DAL-SCOOT
+                  
+                  © 2025 DALScooter
+                  Notification ID: {notification_id}
+                  """
+                  
+                  # Create subscription for user's email if not exists
+                  try:
+                      sns.subscribe(
+                          TopicArn=topic_arn,
+                          Protocol='email',
+                          Endpoint=email
+                      )
+                      print(f"Created email subscription for: {email}")
+                  except Exception as e:
+                      print(f"Subscription may already exist for {email}: {str(e)}")
+                  
+                  # Send notification
+                  response = sns.publish(
+                      TopicArn=topic_arn,
+                      Message=message,
+                      Subject=subject
+                  )
+                  
+                  print(f"Registration notification sent successfully. MessageId: {response['MessageId']}")
+                  return True
+                  
+              except Exception as e:
+                  print(f"Failed to send registration notification: {str(e)}")
+                  return False
+          
+          def log_notification_delivery(table, notification_id, user_id, email, notification_type, status, timestamp):
+              try:
+                  table.put_item(
+                      Item={
+                          'notificationId': notification_id,
+                          'timestamp': timestamp,
+                          'userId': user_id,
+                          'email': email,
+                          'notificationType': notification_type,
+                          'deliveryStatus': status,
+                          'createdAt': datetime.now().isoformat(),
+                          'ttl': int((datetime.now() + timedelta(days=90)).timestamp())
+                      }
+                  )
+                  print(f"Notification delivery logged: {notification_id}")
+              except Exception as e:
+                  print(f"Failed to log notification delivery: {str(e)}")
+
+  LoginEmailProcessor:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-LoginEmailProcessor-${Environment}'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          NOTIFICATION_TABLE: !Ref NotificationDeliveryTable
+          EMAIL_TOPIC_ARN: !Ref EmailNotificationTopic
+          ENVIRONMENT: !Ref Environment
+          PROJECT_NAME: !Ref ProjectName
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import uuid
+          import os
+          from datetime import datetime, timedelta
+          
+          sns = boto3.client('sns')
+          dynamodb = boto3.resource('dynamodb')
+          
+          def lambda_handler(event, context):
+              print(f"Login email processor event: {json.dumps(event)}")
+              
+              notification_table = dynamodb.Table(os.environ['NOTIFICATION_TABLE'])
+              email_topic_arn = os.environ['EMAIL_TOPIC_ARN']
+              
+              for record in event['Records']:
+                  try:
+                      message_body = json.loads(record['body'])
+                      sns_message = json.loads(message_body['Message'])
+                      
+                      print(f"Processing login notification: {sns_message}")
+                      
+                      email = sns_message.get('email', '')
+                      user_id = sns_message.get('userId', '')
+                      user_type = sns_message.get('userType', 'customer')
+                      login_time = sns_message.get('loginTime', datetime.now().isoformat())
+                      
+                      if not email or not user_id:
+                          print(f"Invalid notification data: missing email or userId")
+                          continue
+                      
+                      notification_id = str(uuid.uuid4())
+                      
+                      email_sent = send_login_notification(email, user_id, user_type, login_time, notification_id, email_topic_arn)
+                      
+                      log_notification_delivery(
+                          notification_table,
+                          notification_id,
+                          user_id,
+                          email,
+                          'login',
+                          'sent' if email_sent else 'failed',
+                          login_time
+                      )
+                      
+                      print(f"Login notification {'sent' if email_sent else 'failed'} for user: {user_id}")
+                      
+                  except Exception as e:
+                      print(f"Error processing login notification: {str(e)}")
+                      continue
+              
+              return {'statusCode': 200, 'body': 'Login notifications processed'}
+          
+          def send_login_notification(email, user_id, user_type, login_time, notification_id, topic_arn):
+              try:
+                  try:
+                      login_dt = datetime.fromisoformat(login_time.replace('Z', '+00:00'))
+                      formatted_time = login_dt.strftime('%B %d, %Y at %I:%M %p UTC')
+                  except:
+                      formatted_time = "Recently"
+                  
+                  if user_type.lower() == 'franchise':
+                      user_type_display = "Franchise Operator"
+                      dashboard_info = "Franchise Dashboard: Manage inventory, pricing, bookings"
+                  else:
+                      user_type_display = "Customer"
+                      dashboard_info = "Customer Dashboard: Browse scooters, make bookings"
+                  
+                  subject = "DALScooter - Successful Login Alert"
+                  
+                  message = f"""
+                  🔐 Login Successful - Welcome back to DALScooter!
+                  
+                  Login Details:
+                  📧 Account: {email}
+                  👤 User Type: {user_type_display}
+                  ⏰ Login Time: {formatted_time}
+                  🆔 User ID: {user_id}
+                  🔒 Authentication: 3-Factor Security
+                  
+                  🚀 {dashboard_info}
+                  
+                  🛡️ Security Notice:
+                  If this wasn't you, contact support immediately at support@dalscooter.com
+                  
+                  📞 Support: support@dalscooter.com | 1-800-DAL-SCOOT
+                  
+                  © 2025 DALScooter
+                  Notification ID: {notification_id}
+                  """
+                  
+                  # Send notification
+                  response = sns.publish(
+                      TopicArn=topic_arn,
+                      Message=message,
+                      Subject=subject
+                  )
+                  
+                  print(f"Login notification sent successfully. MessageId: {response['MessageId']}")
+                  return True
+                  
+              except Exception as e:
+                  print(f"Failed to send login notification: {str(e)}")
+                  return False
+          
+          def log_notification_delivery(table, notification_id, user_id, email, notification_type, status, timestamp):
+              try:
+                  table.put_item(
+                      Item={
+                          'notificationId': notification_id,
+                          'timestamp': timestamp,
+                          'userId': user_id,
+                          'email': email,
+                          'notificationType': notification_type,
+                          'deliveryStatus': status,
+                          'createdAt': datetime.now().isoformat(),
+                          'ttl': int((datetime.now() + timedelta(days=90)).timestamp())
+                      }
+                  )
+                  print(f"Notification delivery logged: {notification_id}")
+              except Exception as e:
+                  print(f"Failed to log notification delivery: {str(e)}")
+
+  RegistrationQueueEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt RegistrationNotificationQueue.Arn
+      FunctionName: !GetAtt RegistrationEmailProcessor.Arn
+      BatchSize: 5
+      MaximumBatchingWindowInSeconds: 10
+
+  LoginQueueEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt LoginNotificationQueue.Arn
+      FunctionName: !GetAtt LoginEmailProcessor.Arn
+      BatchSize: 5
+      MaximumBatchingWindowInSeconds: 10
+
+Outputs:
+  RegistrationNotificationQueueUrl:
+    Description: 'Registration Notification SQS Queue URL'
+    Value: !Ref RegistrationNotificationQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-RegistrationQueueUrl'
+
+  LoginNotificationQueueUrl:
+    Description: 'Login Notification SQS Queue URL'
+    Value: !Ref LoginNotificationQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-LoginQueueUrl'
+
+  EmailNotificationTopicArn:
+    Description: 'Email Notification SNS Topic ARN'
+    Value: !Ref EmailNotificationTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-EmailNotificationTopicArn'
+
+  NotificationDeliveryTableName:
+    Description: 'Notification Delivery Tracking Table Name'
+    Value: !Ref NotificationDeliveryTable
+    Export:
+      Name: !Sub '${AWS::StackName}-NotificationDeliveryTableName'

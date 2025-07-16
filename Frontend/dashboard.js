@@ -6,6 +6,7 @@ let scooterPrices = {
     'gyroscooter': 20,
     'segway': 25
 };
+let userFeedbacks = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeDashboard();
@@ -25,6 +26,12 @@ function initializeDashboard() {
         return;
     }
     
+    // Redirect franchise users to franchise dashboard
+    if (currentUser.userType === 'franchise') {
+        window.location.href = 'franchise-dashboard.html' + window.location.search;
+        return;
+    }
+    
     document.getElementById('user-id').value = currentUser.userId;
     document.getElementById('user-email').value = currentUser.email;
     document.getElementById('user-type').value = currentUser.userType;
@@ -40,13 +47,20 @@ function initializeDashboard() {
     
     loadUserBookings();
     
-    addActivity('Account Login', 'Successfully logged in with 3-factor authentication', 'Just now', 'fas fa-user-check');
+    addActivity('Customer Login', 'Successfully logged in with 3-factor authentication', 'Just now', 'fas fa-user-check');
+    
+    debugLog('Customer dashboard initialized for user:', currentUser.userId);
 }
 
 function setupFormHandlers() {
     const bookingForm = document.getElementById('booking-form');
     if (bookingForm) {
         bookingForm.addEventListener('submit', handleBookingSubmission);
+    }
+    
+    const feedbackForm = document.getElementById('feedback-form');
+    if (feedbackForm) {
+        feedbackForm.addEventListener('submit', handleFeedbackSubmission);
     }
     
     const durationSelect = document.getElementById('duration');
@@ -71,6 +85,8 @@ function selectScooter(scooterType) {
     formContainer.scrollIntoView({ behavior: 'smooth' });
     
     updateBookingSummary();
+    
+    addActivity('Scooter Selection', `Selected ${scooterType} for booking`, 'Just now', 'fas fa-mouse-pointer');
 }
 
 function updateBookingSummary() {
@@ -104,7 +120,7 @@ async function handleBookingSubmission(event) {
         specialRequests: document.getElementById('special-requests').value.trim(),
         bookingId: generateBookingId(),
         bookingTime: new Date().toISOString(),
-        status: 'pending'
+        status: 'confirmed'
     };
     
     if (!validateBookingData(bookingData)) {
@@ -133,7 +149,7 @@ async function handleBookingSubmission(event) {
             
             addActivity(
                 'Scooter Booked', 
-                `${bookingData.scooterType} reserved for ${bookingData.duration} hour(s)`, 
+                `${bookingData.scooterType} reserved for ${bookingData.duration} hour(s) at ${bookingData.pickupLocation}`, 
                 'Just now', 
                 'fas fa-calendar-check'
             );
@@ -149,6 +165,66 @@ async function handleBookingSubmission(event) {
         
     } catch (error) {
         showResultBox(resultDiv, 'error', `Network Error: ${error.message}`);
+    } finally {
+        setLoadingState(submitButton, false);
+    }
+}
+
+async function handleFeedbackSubmission(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const resultDiv = document.getElementById('feedback-result');
+    
+    const feedbackData = {
+        userId: currentUser.userId,
+        email: currentUser.email,
+        bookingId: document.getElementById('feedback-booking').value.trim() || 'General Feedback',
+        rating: document.getElementById('feedback-rating').value,
+        message: document.getElementById('feedback-message').value.trim(),
+        feedbackId: generateFeedbackId(),
+        timestamp: new Date().toISOString()
+    };
+    
+    if (!feedbackData.rating || !feedbackData.message) {
+        showNotification('Please provide both rating and feedback message', 'error');
+        return;
+    }
+    
+    setLoadingState(submitButton, true);
+    clearResultBox(resultDiv);
+    
+    try {
+        // Simulate feedback submission
+        userFeedbacks.push(feedbackData);
+        
+        showResultBox(resultDiv, 'success', 
+            `Feedback Submitted Successfully!\n\n` +
+            `Feedback ID: ${feedbackData.feedbackId}\n` +
+            `Rating: ${feedbackData.rating}/5 stars\n` +
+            `Booking Reference: ${feedbackData.bookingId}\n\n` +
+            `Thank you for helping us improve our service!`
+        );
+        
+        addActivity(
+            'Feedback Submitted', 
+            `${feedbackData.rating}-star feedback submitted for ${feedbackData.bookingId}`, 
+            'Just now', 
+            'fas fa-star'
+        );
+        
+        form.reset();
+        
+        // Store in localStorage
+        localStorage.setItem(`dalscooter_feedbacks_${currentUser.userId}`, JSON.stringify(userFeedbacks));
+        
+        setTimeout(() => {
+            clearResultBox(resultDiv);
+        }, 5000);
+        
+    } catch (error) {
+        showResultBox(resultDiv, 'error', `Error submitting feedback: ${error.message}`);
     } finally {
         setLoadingState(submitButton, false);
     }
@@ -173,7 +249,7 @@ async function sendBookingNotification(bookingData) {
         setTimeout(() => {
             console.log('BOOKING NOTIFICATION SENT:');
             console.log(`   Booking ID: ${bookingData.bookingId}`);
-            console.log(`   User: ${bookingData.email}`);
+            console.log(`   Customer: ${bookingData.email}`);
             console.log(`   Scooter: ${bookingData.scooterType}`);
             console.log(`   Location: ${bookingData.pickupLocation}`);
             console.log(`   Duration: ${bookingData.duration} hours`);
@@ -230,6 +306,12 @@ function generateBookingId() {
     return `DAL-${timestamp}-${random}`.toUpperCase();
 }
 
+function generateFeedbackId() {
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substr(2, 3);
+    return `FB-${timestamp}-${random}`.toUpperCase();
+}
+
 function cancelBooking() {
     const formContainer = document.getElementById('booking-form-container');
     formContainer.classList.remove('active');
@@ -248,6 +330,8 @@ function cancelBooking() {
     document.getElementById('summary-total').textContent = '$0.00';
     
     clearResultBox(document.getElementById('booking-result'));
+    
+    addActivity('Booking Cancelled', 'Booking form was cancelled', 'Just now', 'fas fa-times');
 }
 
 function loadUserBookings() {
@@ -256,6 +340,11 @@ function loadUserBookings() {
         userBookings = JSON.parse(storedBookings);
         updateBookingsDisplay();
         document.getElementById('user-bookings').textContent = userBookings.length;
+    }
+    
+    const storedFeedbacks = localStorage.getItem(`dalscooter_feedbacks_${currentUser.userId}`);
+    if (storedFeedbacks) {
+        userFeedbacks = JSON.parse(storedFeedbacks);
     }
 }
 
@@ -280,14 +369,31 @@ function updateBookingsDisplay() {
                 <p><i class="fas fa-map-marker-alt"></i> Pickup: ${booking.pickupLocation}</p>
                 <p><i class="fas fa-clock"></i> ${new Date(booking.startTime).toLocaleString()} (${booking.duration}h)</p>
                 <p><i class="fas fa-dollar-sign"></i> Cost: $${(scooterPrices[booking.scooterType] * parseInt(booking.duration)).toFixed(2)}</p>
+                ${booking.specialRequests ? `<p><i class="fas fa-comment"></i> Notes: ${booking.specialRequests}</p>` : ''}
             </div>
-            <div class="booking-status ${booking.status}">
-                ${booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+            <div class="booking-actions">
+                <div class="booking-status ${booking.status}">
+                    ${booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="provideFeedbackForBooking('${booking.bookingId}')">
+                    <i class="fas fa-star"></i> Feedback
+                </button>
             </div>
         </div>
     `).join('');
     
     localStorage.setItem(`dalscooter_bookings_${currentUser.userId}`, JSON.stringify(userBookings));
+}
+
+function provideFeedbackForBooking(bookingId) {
+    document.getElementById('feedback-booking').value = bookingId;
+    
+    const feedbackSection = document.querySelector('.feedback-section');
+    feedbackSection.scrollIntoView({ behavior: 'smooth' });
+    
+    showNotification(`Ready to provide feedback for booking ${bookingId}`, 'info');
+    
+    addActivity('Feedback Initiated', `Started feedback process for booking ${bookingId}`, 'Just now', 'fas fa-comment-dots');
 }
 
 function addActivity(title, description, time, iconClass) {
@@ -321,7 +427,7 @@ function logout() {
     localStorage.removeItem('dalscooter_userType');
     localStorage.removeItem('dalscooter_sessionId');
     
-    addActivity('User Logout', 'Successfully logged out from dashboard', 'Just now', 'fas fa-sign-out-alt');
+    addActivity('Customer Logout', 'Successfully logged out from customer dashboard', 'Just now', 'fas fa-sign-out-alt');
     
     showNotification('Logged out successfully', 'success');
     
@@ -392,6 +498,30 @@ function showNotification(message, type = 'info') {
 function debugLog(message, data = null) {
     if (CONFIG.DEBUG) {
         const timestamp = new Date().toISOString();
-        console.log(`[${timestamp}] [Dashboard] ${message}`, data || '');
+        console.log(`[${timestamp}] [Customer Dashboard] ${message}`, data || '');
     }
 }
+
+// Simulate real-time updates for available scooters
+setInterval(() => {
+    const now = new Date();
+    if (now.getMinutes() % 3 === 0 && now.getSeconds() < 5) {
+        // Simulate scooter availability changes every 3 minutes
+        addActivity(
+            'Availability Update', 
+            'Scooter availability updated - new eBike available at Halifax Waterfront', 
+            'Just now', 
+            'fas fa-sync'
+        );
+    }
+}, 1000);
+
+// Initialize dashboard on load
+window.addEventListener('load', function() {
+    debugLog('Customer dashboard fully loaded');
+    
+    // Add some sample activity for demonstration
+    setTimeout(() => {
+        addActivity('Welcome', 'Welcome to DALScooter! Explore our scooter options above.', '1 minute ago', 'fas fa-hand-wave');
+    }, 2000);
+});
