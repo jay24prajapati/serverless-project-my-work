@@ -151,6 +151,33 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # Table to store user-specific SNS topic ARNs
+  UserNotificationTopicsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-UserNotificationTopics-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
   RegistrationNotificationTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -261,15 +288,18 @@ Resources:
       Runtime: python3.9
       Handler: index.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
-      Timeout: 30
+      Timeout: 60
       MemorySize: 256
       Environment:
         Variables:
           USERS_TABLE: !Ref UsersTable
           SECURITY_QUESTIONS_TABLE: !Ref SecurityQuestionsTable
+          USER_NOTIFICATION_TOPICS_TABLE: !Ref UserNotificationTopicsTable
           COGNITO_USER_POOL_ID: !Ref CognitoUserPool
           COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
           REGISTRATION_TOPIC_ARN: !Ref RegistrationNotificationTopic
+          PROJECT_NAME: !Ref ProjectName
+          ENVIRONMENT: !Ref Environment
       Code:
         ZipFile: |
           import json
@@ -338,6 +368,9 @@ Resources:
                       print(f"Cognito error: {str(e)}")
                       return response_with_cors(400, {'error': f'User creation failed: {str(e)}'})
                   
+                  # Create user-specific SNS topic for email notifications
+                  user_topic_arn = create_user_notification_topic(user_id, email, user_type)
+                  
                   users_table.put_item(
                       Item={
                           'userId': user_id,
@@ -346,7 +379,8 @@ Resources:
                           'registrationDate': datetime.now().isoformat(),
                           'isActive': True,
                           'verificationStatus': 'pending',
-                          'cognitoUsername': email
+                          'cognitoUsername': email,
+                          'notificationTopicArn': user_topic_arn
                       }
                   )
                   
@@ -363,7 +397,20 @@ Resources:
                       }
                   )
                   
-                  send_registration_notification(email, user_id, user_type)
+                  # Store user topic information
+                  topics_table = dynamodb.Table(os.environ['USER_NOTIFICATION_TOPICS_TABLE'])
+                  topics_table.put_item(
+                      Item={
+                          'userId': user_id,
+                          'email': email,
+                          'userType': user_type,
+                          'notificationTopicArn': user_topic_arn,
+                          'subscriptionStatus': 'pending',
+                          'createdAt': datetime.now().isoformat()
+                      }
+                  )
+                  
+                  send_registration_notification(email, user_id, user_type, user_topic_arn)
                   
                   print(f"User registered successfully: {user_id}")
                   
@@ -380,7 +427,41 @@ Resources:
                   print(f"Registration error: {str(e)}")
                   return response_with_cors(500, {'error': 'Internal server error'})
           
-          def send_registration_notification(email, user_id, user_type):
+          def create_user_notification_topic(user_id, email, user_type):
+              try:
+                  project_name = os.environ.get('PROJECT_NAME', 'DALScooter')
+                  environment = os.environ.get('ENVIRONMENT', 'dev')
+                  
+                  topic_name = f"{project_name}-User-{user_id}-Notifications-{environment}"
+                  
+                  response = sns.create_topic(
+                      Name=topic_name,
+                      Tags=[
+                          {'Key': 'Project', 'Value': project_name},
+                          {'Key': 'Environment', 'Value': environment},
+                          {'Key': 'UserId', 'Value': user_id},
+                          {'Key': 'UserType', 'Value': user_type},
+                          {'Key': 'Email', 'Value': email}
+                      ]
+                  )
+                  
+                  topic_arn = response['TopicArn']
+                  
+                  # Subscribe user's email to their personal topic
+                  sns.subscribe(
+                      TopicArn=topic_arn,
+                      Protocol='email',
+                      Endpoint=email
+                  )
+                  
+                  print(f"Created personal notification topic for user {user_id}: {topic_arn}")
+                  return topic_arn
+                  
+              except Exception as e:
+                  print(f"Error creating user notification topic: {str(e)}")
+                  return None
+          
+          def send_registration_notification(email, user_id, user_type, user_topic_arn):
               try:
                   topic_arn = os.environ.get('REGISTRATION_TOPIC_ARN', '')
                   if not topic_arn:
@@ -391,6 +472,7 @@ Resources:
                       'email': email,
                       'userId': user_id,
                       'userType': user_type,
+                      'userTopicArn': user_topic_arn,
                       'timestamp': datetime.now().isoformat(),
                       'event': 'user_registered'
                   }
@@ -450,6 +532,7 @@ Resources:
       Environment:
         Variables:
           USERS_TABLE: !Ref UsersTable
+          USER_NOTIFICATION_TOPICS_TABLE: !Ref UserNotificationTopicsTable
           COGNITO_USER_POOL_ID: !Ref CognitoUserPool
           COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
       Code:
@@ -492,6 +575,17 @@ Resources:
                               UpdateExpression='SET verificationStatus = :status, verifiedAt = :verified_at',
                               ExpressionAttributeValues={
                                   ':status': 'verified',
+                                  ':verified_at': datetime.now().isoformat()
+                              }
+                          )
+                          
+                          # Update subscription status in topics table
+                          topics_table = dynamodb.Table(os.environ['USER_NOTIFICATION_TOPICS_TABLE'])
+                          topics_table.update_item(
+                              Key={'userId': user_id},
+                              UpdateExpression='SET subscriptionStatus = :status, verifiedAt = :verified_at',
+                              ExpressionAttributeValues={
+                                  ':status': 'confirmed',
                                   ':verified_at': datetime.now().isoformat()
                               }
                           )
@@ -619,13 +713,14 @@ Resources:
       Runtime: python3.9
       Handler: index.lambda_handler
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LabRole'
-      Timeout: 30
+      Timeout: 60
       MemorySize: 256
       Environment:
         Variables:
           USERS_TABLE: !Ref UsersTable
           SECURITY_QUESTIONS_TABLE: !Ref SecurityQuestionsTable
           USER_SESSIONS_TABLE: !Ref UserSessionsTable
+          USER_NOTIFICATION_TOPICS_TABLE: !Ref UserNotificationTopicsTable
           COGNITO_USER_POOL_ID: !Ref CognitoUserPool
           COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
           LOGIN_TOPIC_ARN: !Ref LoginNotificationTopic
@@ -854,10 +949,14 @@ Resources:
                       print("No login topic ARN configured, skipping notification")
                       return
                   
+                  # Get user's personal notification topic
+                  user_topic_arn = user_data.get('notificationTopicArn')
+                  
                   message = {
                       'email': user_data['email'],
                       'userId': user_data['userId'],
                       'userType': user_data['userType'],
+                      'userTopicArn': user_topic_arn,
                       'loginTime': datetime.now().isoformat(),
                       'event': 'user_login'
                   }
@@ -1349,6 +1448,12 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-NotificationLogsTableName'
 
+  UserNotificationTopicsTableName:
+    Description: 'DynamoDB User Notification Topics table name'
+    Value: !Ref UserNotificationTopicsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-UserNotificationTopicsTableName'
+
   RegistrationTopicArn:
     Description: 'Registration Notification Topic ARN'
     Value: !Ref RegistrationNotificationTopic
@@ -1376,5 +1481,3 @@ Outputs:
   LoginEndpoint:
     Description: 'User Login API Endpoint'
     Value: !Sub 'https://${DALScooterAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/auth/login'
-
-  

@@ -1,5 +1,5 @@
 const CONFIG = {
-    API_BASE_URL: 'https://56vkl0dwf4.execute-api.us-east-1.amazonaws.com/dev',
+    API_BASE_URL: 'https://2ul9ohemkb.execute-api.us-east-1.amazonaws.com/dev',
     
     ENDPOINTS: {
         REGISTER: '/auth/register',

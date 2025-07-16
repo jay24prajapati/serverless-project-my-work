@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'DALScooter Notification Module - Email Notifications via SNS/SQS/SES'
+Description: 'DALScooter Notification Module - Personal Email Notifications via SNS/SQS'
 
 Parameters:
   ProjectName:
@@ -22,6 +22,10 @@ Parameters:
   LoginTopicArn:
     Type: String
     Description: 'ARN of the existing Login SNS Topic from Module 1'
+
+  UserNotificationTopicsTableName:
+    Type: String
+    Description: 'Name of the User Notification Topics table from Module 1'
 
 Resources:
   # SQS Queue for Registration Notifications
@@ -168,18 +172,6 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
-  # Email Notification SNS Topic (alternative to SES)
-  EmailNotificationTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: !Sub '${ProjectName}-Email-Notifications-${Environment}'
-      DisplayName: 'DALScooter Email Notifications'
-      Tags:
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-
   RegistrationEmailProcessor:
     Type: AWS::Lambda::Function
     Properties:
@@ -192,7 +184,7 @@ Resources:
       Environment:
         Variables:
           NOTIFICATION_TABLE: !Ref NotificationDeliveryTable
-          EMAIL_TOPIC_ARN: !Ref EmailNotificationTopic
+          USER_NOTIFICATION_TOPICS_TABLE: !Ref UserNotificationTopicsTableName
           ENVIRONMENT: !Ref Environment
           PROJECT_NAME: !Ref ProjectName
       Code:
@@ -210,7 +202,7 @@ Resources:
               print(f"Registration email processor event: {json.dumps(event)}")
               
               notification_table = dynamodb.Table(os.environ['NOTIFICATION_TABLE'])
-              email_topic_arn = os.environ['EMAIL_TOPIC_ARN']
+              topics_table = dynamodb.Table(os.environ['USER_NOTIFICATION_TOPICS_TABLE'])
               
               for record in event['Records']:
                   try:
@@ -222,16 +214,24 @@ Resources:
                       email = sns_message.get('email', '')
                       user_id = sns_message.get('userId', '')
                       user_type = sns_message.get('userType', 'customer')
+                      user_topic_arn = sns_message.get('userTopicArn', '')
                       timestamp = sns_message.get('timestamp', datetime.now().isoformat())
                       
                       if not email or not user_id:
                           print(f"Invalid notification data: missing email or userId")
                           continue
                       
+                      # Get user's personal topic ARN if not provided
+                      if not user_topic_arn:
+                          user_topic_arn = get_user_topic_arn(topics_table, user_id)
+                          if not user_topic_arn:
+                              print(f"No personal topic found for user: {user_id}")
+                              continue
+                      
                       notification_id = str(uuid.uuid4())
                       
-                      # Send notification via SNS
-                      email_sent = send_registration_notification(email, user_id, user_type, notification_id, email_topic_arn)
+                      # Send notification to user's personal topic
+                      email_sent = send_registration_notification(email, user_id, user_type, notification_id, user_topic_arn)
                       
                       log_notification_delivery(
                           notification_table,
@@ -250,6 +250,16 @@ Resources:
                       continue
               
               return {'statusCode': 200, 'body': 'Registration notifications processed'}
+          
+          def get_user_topic_arn(topics_table, user_id):
+              try:
+                  response = topics_table.get_item(Key={'userId': user_id})
+                  if 'Item' in response:
+                      return response['Item'].get('notificationTopicArn')
+                  return None
+              except Exception as e:
+                  print(f"Error getting user topic ARN: {str(e)}")
+                  return None
           
           def send_registration_notification(email, user_id, user_type, notification_id, topic_arn):
               try:
@@ -283,25 +293,14 @@ Resources:
                   Notification ID: {notification_id}
                   """
                   
-                  # Create subscription for user's email if not exists
-                  try:
-                      sns.subscribe(
-                          TopicArn=topic_arn,
-                          Protocol='email',
-                          Endpoint=email
-                      )
-                      print(f"Created email subscription for: {email}")
-                  except Exception as e:
-                      print(f"Subscription may already exist for {email}: {str(e)}")
-                  
-                  # Send notification
+                  # Send notification to user's personal topic
                   response = sns.publish(
                       TopicArn=topic_arn,
                       Message=message,
                       Subject=subject
                   )
                   
-                  print(f"Registration notification sent successfully. MessageId: {response['MessageId']}")
+                  print(f"Registration notification sent to personal topic. MessageId: {response['MessageId']}")
                   return True
                   
               except Exception as e:
@@ -338,7 +337,7 @@ Resources:
       Environment:
         Variables:
           NOTIFICATION_TABLE: !Ref NotificationDeliveryTable
-          EMAIL_TOPIC_ARN: !Ref EmailNotificationTopic
+          USER_NOTIFICATION_TOPICS_TABLE: !Ref UserNotificationTopicsTableName
           ENVIRONMENT: !Ref Environment
           PROJECT_NAME: !Ref ProjectName
       Code:
@@ -356,7 +355,7 @@ Resources:
               print(f"Login email processor event: {json.dumps(event)}")
               
               notification_table = dynamodb.Table(os.environ['NOTIFICATION_TABLE'])
-              email_topic_arn = os.environ['EMAIL_TOPIC_ARN']
+              topics_table = dynamodb.Table(os.environ['USER_NOTIFICATION_TOPICS_TABLE'])
               
               for record in event['Records']:
                   try:
@@ -368,15 +367,23 @@ Resources:
                       email = sns_message.get('email', '')
                       user_id = sns_message.get('userId', '')
                       user_type = sns_message.get('userType', 'customer')
+                      user_topic_arn = sns_message.get('userTopicArn', '')
                       login_time = sns_message.get('loginTime', datetime.now().isoformat())
                       
                       if not email or not user_id:
                           print(f"Invalid notification data: missing email or userId")
                           continue
                       
+                      # Get user's personal topic ARN if not provided
+                      if not user_topic_arn:
+                          user_topic_arn = get_user_topic_arn(topics_table, user_id)
+                          if not user_topic_arn:
+                              print(f"No personal topic found for user: {user_id}")
+                              continue
+                      
                       notification_id = str(uuid.uuid4())
                       
-                      email_sent = send_login_notification(email, user_id, user_type, login_time, notification_id, email_topic_arn)
+                      email_sent = send_login_notification(email, user_id, user_type, login_time, notification_id, user_topic_arn)
                       
                       log_notification_delivery(
                           notification_table,
@@ -395,6 +402,16 @@ Resources:
                       continue
               
               return {'statusCode': 200, 'body': 'Login notifications processed'}
+          
+          def get_user_topic_arn(topics_table, user_id):
+              try:
+                  response = topics_table.get_item(Key={'userId': user_id})
+                  if 'Item' in response:
+                      return response['Item'].get('notificationTopicArn')
+                  return None
+              except Exception as e:
+                  print(f"Error getting user topic ARN: {str(e)}")
+                  return None
           
           def send_login_notification(email, user_id, user_type, login_time, notification_id, topic_arn):
               try:
@@ -434,14 +451,14 @@ Resources:
                   Notification ID: {notification_id}
                   """
                   
-                  # Send notification
+                  # Send notification to user's personal topic
                   response = sns.publish(
                       TopicArn=topic_arn,
                       Message=message,
                       Subject=subject
                   )
                   
-                  print(f"Login notification sent successfully. MessageId: {response['MessageId']}")
+                  print(f"Login notification sent to personal topic. MessageId: {response['MessageId']}")
                   return True
                   
               except Exception as e:
@@ -494,12 +511,6 @@ Outputs:
     Value: !Ref LoginNotificationQueue
     Export:
       Name: !Sub '${AWS::StackName}-LoginQueueUrl'
-
-  EmailNotificationTopicArn:
-    Description: 'Email Notification SNS Topic ARN'
-    Value: !Ref EmailNotificationTopic
-    Export:
-      Name: !Sub '${AWS::StackName}-EmailNotificationTopicArn'
 
   NotificationDeliveryTableName:
     Description: 'Notification Delivery Tracking Table Name'
