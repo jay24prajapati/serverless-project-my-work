@@ -502,7 +502,6 @@ function debugLog(message, data = null) {
     }
 }
 
-// Simulate real-time updates for available scooters
 setInterval(() => {
     const now = new Date();
     if (now.getMinutes() % 3 === 0 && now.getSeconds() < 5) {

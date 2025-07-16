@@ -104,7 +104,7 @@ function bulkUpdatePricing() {
     
     Object.keys(scooterInventory).forEach(type => {
         const currentRate = scooterInventory[type].rate;
-        const newRate = currentRate + Math.floor(Math.random() * 5) - 2; // Random adjustment
+        const newRate = currentRate + Math.floor(Math.random() * 5) - 2; 
         scooterInventory[type].rate = Math.max(10, newRate); // Minimum $10
         
         updates.push(`${type}: $${currentRate} → $${scooterInventory[type].rate}`);
@@ -253,7 +253,7 @@ setInterval(() => {
     }
 }, 1000);
 
-// Initialize dashboard on load
+// Initialize dashboard 
 window.addEventListener('load', function() {
     debugLog('Franchise dashboard fully loaded');
     updateDashboardStats();

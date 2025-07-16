@@ -278,16 +278,16 @@ Resources:
                   🛴 {welcome_message}
                   
                   Account Details:
-                  📧 Email: {email}
-                  🆔 User ID: {user_id}
-                  👤 Account Type: {user_type_display}
-                  📅 Registration: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
+                  Email: {email}
+                  User ID: {user_id}
+                  Account Type: {user_type_display}
+                  Registration: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
                   
-                  🚀 What's Next:
+                  What's Next:
                   {features}
                   
-                  🔐 Security: 3-factor authentication enabled
-                  📞 Support: support@dalscooter.com | 1-800-DAL-SCOOT
+                  Security: 3-factor authentication enabled
+                  Support: support@dalscooter.com | 1-800-DAL-SCOOT
                   
                   © 2025 DALScooter
                   Notification ID: {notification_id}
@@ -431,21 +431,21 @@ Resources:
                   subject = "DALScooter - Successful Login Alert"
                   
                   message = f"""
-                  🔐 Login Successful - Welcome back to DALScooter!
+                  Login Successful - Welcome back to DALScooter!
                   
                   Login Details:
-                  📧 Account: {email}
-                  👤 User Type: {user_type_display}
-                  ⏰ Login Time: {formatted_time}
-                  🆔 User ID: {user_id}
-                  🔒 Authentication: 3-Factor Security
+                  Account: {email}
+                  User Type: {user_type_display}
+                  Login Time: {formatted_time}
+                  User ID: {user_id}
+                  Authentication: 3-Factor Security
                   
-                  🚀 {dashboard_info}
+                  {dashboard_info}
                   
-                  🛡️ Security Notice:
+                  Security Notice:
                   If this wasn't you, contact support immediately at support@dalscooter.com
                   
-                  📞 Support: support@dalscooter.com | 1-800-DAL-SCOOT
+                  Support: support@dalscooter.com | 1-800-DAL-SCOOT
                   
                   © 2025 DALScooter
                   Notification ID: {notification_id}
